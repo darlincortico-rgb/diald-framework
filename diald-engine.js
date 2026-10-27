@@ -165,6 +165,7 @@
   // Response stage: classify progress toward one objective.
   function classifyResponse(o) {
     const b = num(o.baseline), c = num(o.current), g = num(o.goal);
+    if (c === null) return { level: 'Not yet', text: 'No progress recorded yet. Add the current result at the review point.' };
     if (b === null || c === null || g === null || g === b) return { level: 'Inconclusive', text: 'Enter a baseline, a current result, and a goal on the same measure.' };
     if (o.implementation === 'no') return { level: 'Inconclusive', text: 'The plan was not implemented as intended, so the response cannot be judged yet.' };
     const up = g > b;
@@ -180,6 +181,7 @@
     Positive: ['Keep the activities that worked.', 'Fade support step by step: fewer prompts, more independent tasks.', 'Check that the skill transfers to a new text or class.'],
     Partial: ['Keep the pathway, but adjust: more modeling, more guided practice, or more sessions per week.', 'Look at the objective again: which part is still hard?', 'Add one activity from the same pathway that targets that part.'],
     Limited: ['First check implementation: time, attendance, and how the activities were used.', 'If implementation was adequate, try a different pathway or a more intensive one.', 'Bring the evidence to your team for a contextual review.'],
+    'Not yet': ['Teach the pathway until its review point, then record the current result in Response.', 'Use the same measure as the baseline so the results can be compared.'],
     Inconclusive: ['Collect more evidence on the same measure before making a big change.', 'Make sure baseline, current result, and goal use the same tool.']
   };
 

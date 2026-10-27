@@ -28,7 +28,7 @@
   const sampleChip = x => x.status === 'sample' ? '<span class="chip sample">Sample content</span>' : '';
 
   /* ---------- Supabase ---------- */
-  let sb = null, user = null;
+  let sb = null, user = null, profile = null, profileLoaded = false, googleEnabled = false;
   try {
     if (window.supabase && C.supabaseUrl && C.supabaseKey) {
       sb = window.supabase.createClient(C.supabaseUrl, C.supabaseKey, { auth: { flowType: 'pkce', detectSessionInUrl: true, persistSession: true, autoRefreshToken: true } });
@@ -68,9 +68,16 @@
   function route() {
     const { parts, q } = parseHash();
     const p = parts[0] || '';
+    // A signed-in teacher completes the profile form before using the workspace.
+    if (user && profileLoaded && !profile && !['profile', 'privacy', 'terms', 'reset', 'login'].includes(p)) {
+      const here = location.hash.replace(/^#\/?/, '') || 'plans';
+      location.hash = '#/profile?next=' + encodeURIComponent(here);
+      return;
+    }
     const map = { '': 'home', analyze: 'analyze', plan: 'plans', library: 'library', pathway: 'library', activity: 'library', plans: 'plans' };
     setNav(map[p] || '');
-    if (p === '') home();
+    if (p === 'profile') profilePage(q);
+    else if (p === '') home();
     else if (p === 'analyze') analyzePage(q);
     else if (p === 'library') libraryPage(q);
     else if (p === 'pathway') pathwayPage(parts[1]);
@@ -89,7 +96,7 @@
   /* ---------- header account area ---------- */
   function renderAcct() {
     const html = user
-      ? `<span>${esc(user.email || 'Signed in')}</span><button class="btn" id="signout">Sign out</button>`
+      ? `<a href="#/profile" style="color:inherit;text-decoration:none" title="Edit profile">${esc((profile && profile.full_name) || user.email || 'Signed in')}</a><button class="btn" id="signout">Sign out</button>`
       : `<a class="btn" href="#/login">Sign in</a><a class="btn primary" href="#/login?mode=signup">Create account</a>`;
     document.getElementById('acct').innerHTML = html;
     document.getElementById('acct-m').innerHTML = user ? `<a href="#" id="signout-m">Sign out</a>` : `<a href="#/login">Sign in</a>`;
@@ -442,7 +449,9 @@
           <td class="small">${new Date(r.updated_at).toLocaleDateString()}</td>
           <td><button class="btn ghost danger" data-del="${r.id}" data-n="${r.plan_number}">Delete</button></td></tr>`; }).join('')}</tbody></table>`
         : '<p>No saved plans yet. Run an analysis in <a href="#/analyze">Find supports</a> and choose “Save as a plan”.</p>'}</div>
-      <div class="card"><h3>Account</h3><p class="small">Signed in as ${esc(user.email)}. DIALD stores your email and your saved plans only.</p>
+      <div class="card"><h3>Account</h3>
+        ${profile ? `<p style="margin:0">${esc(profile.full_name)} · ${esc(profile.role)}<br><span class="small">${esc(profile.district)}, ${esc(profile.state)} · Grades ${esc((profile.grades || []).join(', '))}</span></p><p><a href="#/profile">Edit profile</a></p>` : ''}
+        <p class="small">Signed in as ${esc(user.email)}. DIALD stores your account, your teacher profile, and your saved plans. It never stores student information.</p>
         <div class="row"><button class="btn" id="out">Sign out</button><button class="btn danger" id="delacct">Delete my account and all plans</button></div><p id="del-msg" class="err"></p></div>
     </div>`;
     $$('[data-del]').forEach(b => b.onclick = async () => {
@@ -547,7 +556,7 @@
       main.innerHTML = `<div class="page"><div class="card auth">
         <div class="eyebrow">Teacher account</div>
         <h1 style="font-size:30px">${mode === 'signup' ? 'Create your account' : mode === 'forgot' ? 'Reset your password' : 'Sign in'}</h1>
-        ${mode !== 'forgot' && C.googleSignIn ? `<button class="btn" id="google" style="width:100%;justify-content:center">Continue with Google</button><div class="divider">or with email</div>` : ''}
+        ${mode !== 'forgot' && googleEnabled ? `<button class="btn" id="google" style="width:100%;justify-content:center">Continue with Google</button><div class="divider">or with email</div>` : ''}
         <form id="f" novalidate>
           <label for="email">Email</label><input id="email" type="email" autocomplete="email" required>
           ${mode !== 'forgot' ? `<label for="pw" style="margin-top:12px">Password</label><input id="pw" type="password" autocomplete="${mode === 'signup' ? 'new-password' : 'current-password'}" minlength="8" required>` : ''}
@@ -599,16 +608,73 @@
     };
   }
 
+  /* ---------- TEACHER PROFILE ---------- */
+  const ROLES = ['ESOL / TESOL / ELD teacher', 'Bilingual / dual language teacher', 'ELA teacher', 'Content-area teacher (math, science, social studies)', 'Special education teacher', 'Reading / literacy specialist', 'Instructional coach', 'School or district administrator', 'Higher education / researcher', 'Other'];
+  const GRADE_BANDS = ['PreK', 'K-2', '3-5', '6-8', '9-12', 'Adult'];
+  const STATES = ['Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado', 'Connecticut', 'Delaware', 'District of Columbia', 'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa', 'Kansas', 'Kentucky', 'Louisiana', 'Maine', 'Maryland', 'Massachusetts', 'Michigan', 'Minnesota', 'Mississippi', 'Missouri', 'Montana', 'Nebraska', 'Nevada', 'New Hampshire', 'New Jersey', 'New Mexico', 'New York', 'North Carolina', 'North Dakota', 'Ohio', 'Oklahoma', 'Oregon', 'Pennsylvania', 'Puerto Rico', 'Rhode Island', 'South Carolina', 'South Dakota', 'Tennessee', 'Texas', 'Utah', 'Vermont', 'Virginia', 'Washington', 'West Virginia', 'Wisconsin', 'Wyoming', 'Outside the United States'];
+
+  async function loadProfile() {
+    profile = null; profileLoaded = false;
+    if (!sb || !user) return;
+    const { data, error } = await sb.from('profiles').select('*').eq('user_id', user.id).maybeSingle();
+    if (error) { console.warn('profile', error); profileLoaded = false; return; } // table missing: do not block the site
+    profile = data; profileLoaded = true;
+  }
+
+  async function profilePage(q) {
+    if (!(await requireLogin('profile'))) return;
+    const next = q.get('next') || 'plans';
+    const first = !profile;
+    const meta = user.user_metadata || {};
+    const P = profile || { full_name: meta.full_name || meta.name || '', district: '', state: 'Connecticut', grades: [], role: '' };
+    main.innerHTML = `<div class="page"><div class="card auth" style="max-width:560px">
+      <div class="eyebrow">Teacher profile</div>
+      <h1 style="font-size:30px">${first ? 'Tell us about you' : 'Edit your profile'}</h1>
+      <p class="small">${first ? 'One last step. ' : ''}This is information about <b>you</b>, the educator. It helps us understand where DIALD is used. Never enter student information.</p>
+      <form id="pf" novalidate>
+        <label for="pf-name">Full name</label><input id="pf-name" maxlength="120" autocomplete="name" value="${esc(P.full_name)}" required>
+        <label for="pf-district" style="margin-top:12px">School district or organization</label><input id="pf-district" maxlength="160" autocomplete="organization" value="${esc(P.district)}" placeholder="e.g. Hartford Public Schools" required>
+        <label for="pf-state" style="margin-top:12px">State</label><select id="pf-state">${STATES.map(s => `<option ${P.state === s ? 'selected' : ''}>${s}</option>`).join('')}</select>
+        <label for="pf-role" style="margin-top:12px">Your role</label><select id="pf-role"><option value="">Choose one</option>${ROLES.map(r => `<option ${P.role === r ? 'selected' : ''}>${esc(r)}</option>`).join('')}</select>
+        <fieldset style="border:0;padding:0;margin:14px 0 0"><legend style="font-size:13px;font-weight:700;margin-bottom:6px">Grades you usually teach</legend>
+          <div class="row">${GRADE_BANDS.map(g => `<label class="row" style="font-weight:400;gap:6px;margin:0 10px 0 0"><input type="checkbox" style="width:auto" name="pf-g" value="${g}" ${(P.grades || []).includes(g) ? 'checked' : ''}> ${g}</label>`).join('')}</div>
+        </fieldset>
+        <p id="pf-msg" class="err" role="alert"></p>
+        <button class="btn primary" type="submit">${first ? 'Save and continue' : 'Save profile'}</button>
+        ${first ? '' : '<a class="btn ghost" href="#/plans">Cancel</a>'}
+      </form></div></div>`;
+    $('#pf').onsubmit = async e => {
+      e.preventDefault();
+      const row = {
+        user_id: user.id,
+        full_name: $('#pf-name').value.trim(), district: $('#pf-district').value.trim(), state: $('#pf-state').value,
+        role: $('#pf-role').value, grades: $$('[name=pf-g]').filter(x => x.checked).map(x => x.value)
+      };
+      const msg = $('#pf-msg');
+      if (row.full_name.length < 2) { msg.textContent = 'Please enter your name.'; return; }
+      if (row.district.length < 2) { msg.textContent = 'Please enter your school district or organization.'; return; }
+      if (!row.role) { msg.textContent = 'Please choose your role.'; return; }
+      if (!row.grades.length) { msg.textContent = 'Choose at least one grade band.'; return; }
+      const btn = main.querySelector('button[type=submit]'); btn.disabled = true;
+      const { data, error } = await sb.from('profiles').upsert(row).select('*').single();
+      btn.disabled = false;
+      if (error) { msg.textContent = 'Could not save: ' + error.message; return; }
+      profile = data; profileLoaded = true; renderAcct();
+      toast(first ? 'Welcome to DIALD, ' + profile.full_name.split(' ')[0] + '!' : 'Profile saved.');
+      location.hash = '#/' + next.replace(/^#?\/?/, '');
+    };
+  }
+
   /* ---------- static pages ---------- */
   const contact = () => C.contactEmail ? `<a href="mailto:${esc(C.contactEmail)}">${esc(C.contactEmail)}</a>` : 'the contact email shown on this site';
   function privacyPage() {
     main.innerHTML = `<div class="page prose"><div class="eyebrow">Last updated October 2026</div><h1>Privacy policy</h1>
       <p class="lead">DIALD is built so that teachers can use it without sharing any student information.</p>
-      <h2>What we store</h2><ul><li>Your email address and password (managed securely by our authentication provider), or your Google sign-in.</li><li>Plans you choose to save: proficiency levels, years of services, general academic and response categories, the pathways you selected, and progress numbers.</li></ul>
+      <h2>What we store</h2><ul><li>Your email address and password (managed securely by our authentication provider), or your Google sign-in.</li><li>Your teacher profile: your name, school district, state, the grades you teach, and your role.</li><li>Plans you choose to save: proficiency levels, years of services, general academic and response categories, the pathways you selected, and progress numbers.</li></ul>
       <h2>What we do not store</h2><ul><li>Student names, IDs, dates of birth, schools, or any other information that identifies a student.</li><li>Free-text notes about students. The tool has no free-text fields for student information.</li></ul>
       <p>Please do not enter identifying information anywhere on this site.</p>
       <h2>Without an account</h2><p>You can use Find supports and the Library without an account. What you enter stays in your browser tab and is not sent to our servers.</p>
-      <h2>How we use data</h2><p>Only to run the site: to let you sign in, save, and reopen your plans. We do not sell, rent, or share your data, and we do not use it for advertising.</p>
+      <h2>How we use data</h2><p>To run the site: to let you sign in, save, and reopen your plans. Your teacher profile also helps the author understand where and how DIALD is used (for example, how many teachers use it by state, grade, or role). Results are reported only in summary form, never by name. We do not sell, rent, or share your data, and we do not use it for advertising.</p>
       <h2>Who can see your plans</h2><p>Only you. Database rules allow each account to read and change its own plans only.</p>
       <h2>Where data is stored</h2><p>On servers in the United States operated by our database provider (Supabase).</p>
       <h2>Delete your data</h2><p>You can delete any plan, or your whole account and all plans, at any time from <a href="#/plans">My plans</a>.</p>
@@ -631,6 +697,11 @@
       const params = new URLSearchParams(location.search);
       const fromAuth = params.has('code') || params.has('error') || params.has('error_description');
       try { const { data } = await sb.auth.getSession(); user = data.session ? data.session.user : null; } catch (e) { console.warn(e); }
+      await loadProfile();
+      // Show "Continue with Google" only when Google is turned on in Supabase.
+      fetch(C.supabaseUrl + '/auth/v1/settings', { headers: { apikey: C.supabaseKey } })
+        .then(r => r.json()).then(s => { googleEnabled = !!(s && s.external && s.external.google); if (googleEnabled && (parseHash().parts[0] || '') === 'login') route(); })
+        .catch(() => { googleEnabled = false; });
       if (fromAuth) {
         if (params.get('error_description')) toast(params.get('error_description'));
         const next = store.get('diald-next') || 'plans'; store.del('diald-next');
@@ -640,8 +711,12 @@
         const was = !!user; user = s ? s.user : null; renderAcct();
         if (event === 'PASSWORD_RECOVERY') { location.hash = '#/reset'; return; }
         if (was !== !!user) {
-          const p = parseHash().parts[0] || '';
-          if (['plans', 'plan', 'analyze', 'pathway', 'login'].includes(p)) route();
+          // Supabase advises not awaiting inside this callback; load the profile afterwards.
+          setTimeout(async () => {
+            await loadProfile(); renderAcct();
+            const p = parseHash().parts[0] || '';
+            if (!user || ['plans', 'plan', 'analyze', 'pathway', 'login', 'profile'].includes(p) || (profileLoaded && !profile)) route();
+          }, 0);
         }
       });
     }

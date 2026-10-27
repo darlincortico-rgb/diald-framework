@@ -74,6 +74,8 @@ p,li{font-size:15px;line-height:1.65;color:var(--ink-2)}
 .badge.Moderate,.badge.Partial{background:var(--warn-soft);color:var(--warn)}
 .badge.High,.badge.Limited{background:var(--bad-soft);color:var(--bad)}
 .badge.Inconclusive{background:var(--muted-soft);color:var(--ink-2)}
+.badge.Not{background:var(--muted-soft);color:var(--ink-3);font-weight:600}
+fieldset .row label{display:flex}
 
 /* Home */
 .hero{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:40px;align-items:center;padding:28px 0 18px}
