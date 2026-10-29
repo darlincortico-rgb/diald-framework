@@ -127,29 +127,78 @@
     ['Response', 'At the review point, record progress. DIALD reads it as Positive, Partial, or Limited.'],
     ['Adaptation', 'Keep, adjust, intensify, or change the support. New evidence returns to the Profile.']
   ];
+  // Five-segment wheel. Each stage has a color and a simple line icon (drawn in a 24x24 box).
+  const STAGE_LOOK = [
+    { c: '#1B3A5C', t: '#fff', i: '<path d="M4 20V13M9.3 20V8M14.6 20V11M20 20V5"/><path d="M2.5 21.5h19"/>' },
+    { c: '#2C6E91', t: '#fff', i: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 3v18M3 12h18"/><circle cx="7.5" cy="7.5" r="1.6" fill="currentColor"/>' },
+    { c: '#2A9488', t: '#fff', i: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/>' },
+    { c: '#E3A93B', t: '#1B3A5C', i: '<path d="M3 20h18"/><path d="M4 16l5-5 4 3 7-8"/><path d="M15 6h5v5"/>' },
+    { c: '#C8673F', t: '#fff', i: '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2.2"/><circle cx="10" cy="17" r="2.2"/>' }
+  ];
   function cycleHTML(id) {
-    const n = CYCLE.length, R = 42; // percent of the ring box
-    return `<div class="cycle-ring" id="${id}">
-      <svg class="ring-art" viewBox="0 0 100 100" aria-hidden="true">
-        <defs><marker id="${id}-ar" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4" markerHeight="4" orient="auto"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
-        ${CYCLE.map((_, i) => { const a1 = (i / n) * 2 * Math.PI - Math.PI / 2 + 0.36, a2 = ((i + 1) / n) * 2 * Math.PI - Math.PI / 2 - 0.36;
-          return `<path d="M${50 + R * Math.cos(a1)} ${50 + R * Math.sin(a1)} A${R} ${R} 0 0 1 ${50 + R * Math.cos(a2)} ${50 + R * Math.sin(a2)}" fill="none" stroke="currentColor" stroke-width="0.8" marker-end="url(#${id}-ar)"/>`; }).join('')}
-      </svg>
-      ${CYCLE.map(([t], i) => { const ang = (i / n) * 2 * Math.PI - Math.PI / 2;
-        return `<button type="button" class="node ${i === 0 ? 'on' : ''}" data-node="${i}" style="left:${50 + R * Math.cos(ang)}%;top:${50 + R * Math.sin(ang)}%" aria-pressed="${i === 0}"><span>${i + 1}</span><b>${t}</b></button>`; }).join('')}
-      <div class="ring-center" aria-live="polite"><b id="${id}-t">${CYCLE[0][0]}</b><p id="${id}-d">${CYCLE[0][1]}</p></div>
+    const n = CYCLE.length, C = 200, RO = 194, RI = 104, RM = 149, step = 2 * Math.PI / n;
+    const pt = (r, a) => (C + r * Math.cos(a)).toFixed(2) + ' ' + (C + r * Math.sin(a)).toFixed(2);
+    // Puzzle joint on the radial edge at angle a: a round knob with a narrow neck that pokes
+    // toward increasing angles. A segment draws it as a tab on its end edge (outer -> inner)
+    // and as the matching slot on its start edge (inner -> outer).
+    const KR = 15, KN = 8, KD = Math.sqrt(KR * KR - KN * KN);
+    const joint = (a, inward) => {
+      const t = [-Math.sin(a), Math.cos(a)], u = [Math.cos(a), Math.sin(a)];
+      const P = r => [C + r * u[0], C + r * u[1]];
+      const [A, B] = inward ? [P(RM + KN), P(RM - KN)] : [P(RM - KN), P(RM + KN)];
+      const M = P(RM), far = [M[0] + (KD + KR) * t[0], M[1] + (KD + KR) * t[1]];
+      const cross = (far[0] - A[0]) * (B[1] - far[1]) - (far[1] - A[1]) * (B[0] - far[0]);
+      return `L${A[0].toFixed(2)} ${A[1].toFixed(2)} A${KR} ${KR} 0 1 ${cross > 0 ? 1 : 0} ${B[0].toFixed(2)} ${B[1].toFixed(2)}`;
+    };
+    const segs = CYCLE.map(([t], i) => {
+      const L = STAGE_LOOK[i], a0 = -Math.PI / 2 - step / 2 + i * step, a1 = a0 + step, am = a0 + step / 2;
+      const d = `M${pt(RO, a0)} A${RO} ${RO} 0 0 1 ${pt(RO, a1)} ${joint(a1, true)} L${pt(RI, a1)} A${RI} ${RI} 0 0 0 ${pt(RI, a0)} ${joint(a0, false)} Z`;
+      const mx = C + RM * Math.cos(am), my = C + RM * Math.sin(am);
+      const words = t.split(' ');
+      const label = words.length > 1
+        ? `<text x="${mx}" y="${my + 22}">${esc(words[0])}</text><text x="${mx}" y="${my + 37}">${esc(words.slice(1).join(' '))}</text>`
+        : `<text x="${mx}" y="${my + 26}">${esc(t)}</text>`;
+      return `<g class="seg" data-node="${i}" role="button" tabindex="0" aria-pressed="false" aria-label="Stage ${i + 1}: ${esc(t)}"
+          style="--dx:${(9 * Math.cos(am)).toFixed(2)}px;--dy:${(9 * Math.sin(am)).toFixed(2)}px;--d:${i * 90}ms;color:${L.t}">
+        <path d="${d}" fill="${L.c}"/>
+        <text class="num" x="${mx}" y="${my - 30}">${i + 1}</text>
+        <svg x="${mx - 15}" y="${my - 22}" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${L.i}</svg>
+        ${label}
+      </g>`;
+    }).join('');
+    return `<div class="cycle-wrap">
+      <div class="wheel" id="${id}">
+        <svg class="wheel-art" viewBox="0 0 400 400" aria-label="The DIALD cycle: five stages">${segs}</svg>
+        <div class="wheel-center" aria-live="polite">
+          <small id="${id}-n">The DIALD cycle</small>
+          <b id="${id}-t">Five stages</b>
+          <p id="${id}-d">Choose a stage to see what happens in it.</p>
+        </div>
+      </div>
+      <div class="ring-desc" aria-hidden="true"><b id="${id}-t2">The DIALD cycle</b><p id="${id}-d2">Tap a stage to see what happens in it.</p></div>
     </div>`;
   }
   function bindCycle(id) {
     const box = document.getElementById(id); if (!box) return;
-    box.querySelectorAll('[data-node]').forEach(b => {
+    const segs = [...box.querySelectorAll('[data-node]')];
+    const set = (k, v) => { const el = document.getElementById(id + k); if (el) el.textContent = v; };
+    segs.forEach(g => {
       const pick = () => {
-        box.querySelectorAll('[data-node]').forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', x === b); });
-        const [t, d] = CYCLE[Number(b.dataset.node)];
-        document.getElementById(id + '-t').textContent = t; document.getElementById(id + '-d').textContent = d;
+        segs.forEach(x => { x.classList.toggle('on', x === g); x.setAttribute('aria-pressed', x === g); });
+        const k = Number(g.dataset.node), [t, d] = CYCLE[k];
+        box.style.setProperty('--accent', STAGE_LOOK[k].c);
+        set('-n', 'Stage ' + (k + 1) + ' of 5'); set('-t', t); set('-d', d);
+        set('-t2', (k + 1) + ' · ' + t); set('-d2', d);
       };
-      b.onclick = pick; b.onmouseenter = pick; b.onfocus = pick;
+      g.onclick = pick; g.onmouseenter = pick; g.onfocus = pick;
+      g.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } };
     });
+    // Segments appear one after another when the wheel scrolls into view.
+    if ('IntersectionObserver' in window) {
+      box.classList.add('pre');
+      const io = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { box.classList.remove('pre'); box.classList.add('in'); io.disconnect(); } }, { threshold: 0.3 });
+      io.observe(box);
+    }
   }
 
   function home() { if (user) welcomeHome(); else landing('home', 'signin'); }
@@ -175,6 +224,7 @@
       <nav class="jump" aria-label="On this page">
         <div class="jump-in">
           <a href="#how" data-jump="how" class="on">How it works</a>
+          <a href="#profiles" data-jump="profiles">Four profiles</a>
           <a href="#about" data-jump="about">About DIALD</a>
           <a href="#start" data-jump="start">Get started</a>
         </div>
@@ -187,17 +237,38 @@
             <p>Each stage feeds the next. When new evidence arrives, it returns to the Profile and the cycle starts again.</p>
             <p class="small">Tap a stage to see what happens in it.</p>
           </div>
-          <div class="land-cycle"><div class="ring-bg">${cycleHTML('ring')}</div></div>
+          <div class="land-cycle">${cycleHTML('ring')}</div>
         </div>
       </section>
-      <section class="sec tint" id="about">
+      <section class="sec tint" id="profiles">
+        <div class="sec-in how">
+          <div>
+            <div class="eyebrow">The Pattern Indicator</div>
+            <h2>Four oral–literacy profiles.</h2>
+            <p>DIALD compares <b>oral language</b> (Listening + Speaking) with <b>literacy</b> (Reading + Writing). Each year’s levels place a learner in one of four profiles.</p>
+            <p>An area counts as <b>High</b> when both of its domains are at or above the reference level (level 3 by default). DIALD never averages levels.</p>
+            <p class="small">A profile starts a conversation. It is not a label or a diagnosis.</p>
+          </div>
+          <div class="quad-wrap">
+            <div class="quad-y" aria-hidden="true"><span>High</span><b>Oral language</b><span>Low</span></div>
+            <div class="quad">
+              <div class="qc q1"><i>Q1</i><b>Oral dominant</b><small>High oral · Low literacy</small><p>Speaking and listening are ahead of reading and writing. If this lasts for years, it can signal risk of long-term EL status.</p></div>
+              <div class="qc q2"><i>Q2</i><b>Balanced</b><small>High oral · High literacy</small><p>Strong in both areas. Keep building academic language across content classes.</p></div>
+              <div class="qc q3"><i>Q3</i><b>Lower in both</b><small>Low oral · Low literacy</small><p>Lower in both areas. Read it with the learner’s history, such as recent arrival or interrupted schooling.</p></div>
+              <div class="qc q4"><i>Q4</i><b>Literacy dominant</b><small>Low oral · High literacy</small><p>Reading and writing are ahead. Use strengths in text to build academic talk.</p></div>
+            </div>
+            <div class="quad-x" aria-hidden="true"><span>Low</span><b>Literacy</b><span>High</span></div>
+          </div>
+        </div>
+      </section>
+      <section class="sec" id="about">
         <div class="sec-in">
           <div class="eyebrow">About DIALD</div>
           <h2>Questions teachers ask</h2>
           <div class="acc">
             <details open><summary><span>What is DIALD?</span><i aria-hidden="true"></i></summary><p>The Data-Informed Academic Language Development Framework. It uses data schools already collect — domain levels from tests like LAS Links or ACCESS — to spot learners who may be moving toward long-term English learner status, and connects them with targeted instruction.</p></details>
             <details><summary><span>Who is it for?</span><i aria-hidden="true"></i></summary><p>ESOL/TESOL, bilingual, ELA, and content-area teachers, coaches, and leaders who work with multilingual learners in grades K–12.</p></details>
-            <details><summary><span>Do I enter student information?</span><i aria-hidden="true"></i></summary><p>No. DIALD works with proficiency levels only. It never asks for names, IDs, or anything that identifies a student.</p></details>
+            <details><summary><span>What data does DIALD use?</span><i aria-hidden="true"></i></summary><p>The Listening, Speaking, Reading, and Writing levels from your annual language test (for example, LAS Links or ACCESS), plus what you know about academic progress and earlier supports. Levels only: never student names or IDs.</p></details>
             <details><summary><span>Is it free?</span><i aria-hidden="true"></i></summary><p>Yes. Create a free teacher account to use the tool, browse the library, and save your plans.</p></details>
           </div>
         </div>
@@ -261,7 +332,7 @@
             </div>
             <p class="small" style="margin-top:18px">Want to see an example first? <a href="#/analyze?sample=ana">Open the sample case</a>.</p>
           </div>
-          <div class="land-cycle"><div class="ring-bg">${cycleHTML('ring')}</div></div>
+          <div class="land-cycle">${cycleHTML('ring')}</div>
         </div>
       </section>
     </div>`;

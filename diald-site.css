@@ -1,7 +1,7 @@
-@font-face{font-family:"Fraunces";font-weight:600;font-style:normal;font-display:swap;src:url(diald-fraunces-600.woff2) format("woff2")}
+@font-face{font-family:"Public Sans";font-weight:400;font-style:normal;font-display:swap;src:url(diald-public-sans-400.woff2) format("woff2")}
+@font-face{font-family:"Public Sans";font-weight:500 600;font-style:normal;font-display:swap;src:url(diald-public-sans-600.woff2) format("woff2")}
+@font-face{font-family:"Public Sans";font-weight:700 900;font-style:normal;font-display:swap;src:url(diald-public-sans-800.woff2) format("woff2")}
 @font-face{font-family:"Fraunces";font-weight:700;font-style:normal;font-display:swap;src:url(diald-fraunces-700.woff2) format("woff2")}
-@font-face{font-family:"Outfit";font-weight:400;font-style:normal;font-display:swap;src:url(diald-outfit-400.woff2) format("woff2")}
-@font-face{font-family:"Outfit";font-weight:600 800;font-style:normal;font-display:swap;src:url(diald-outfit-600.woff2) format("woff2")}
 :root{
   --navy:#1B3A5C;--navy-2:#142d48;--teal:#2A9488;--teal-d:#1f7a70;--gold:#E3A93B;--gold-d:#c98f22;
   --ink:#1B3A5C;--ink-2:#45596e;--ink-3:#738396;
@@ -9,7 +9,7 @@
   --bg:#f6f8fb;--card:#fff;--line:#dde4ec;--line-2:#eef2f6;--tint:#eef5f8;
   --good:#23806f;--good-soft:#e2f3ef;--warn:#9a6a10;--warn-soft:#fcf1dc;--bad:#a83c32;--bad-soft:#f8e5e2;--muted-soft:#eef1f5;
   --radius:14px;--shadow:0 1px 2px rgba(27,58,92,.06),0 6px 20px -12px rgba(27,58,92,.25);
-  --serif:"Fraunces",Georgia,"Times New Roman",serif;--sans:"Outfit",Arial,Helvetica,sans-serif;
+  --serif:"Public Sans",Arial,Helvetica,sans-serif;--sans:"Public Sans",Arial,Helvetica,sans-serif;--logo:"Fraunces",Georgia,serif;
   font-family:var(--sans);color:var(--ink);background:var(--bg);
 }
 *{box-sizing:border-box}
@@ -261,7 +261,7 @@ input:focus,select:focus{border-color:var(--teal);outline:0;box-shadow:0 0 0 3px
 .top-in{height:72px}
 .brand{display:inline-flex;align-items:center;gap:10px;letter-spacing:0}
 .brand .logo{width:44px;height:44px;flex:none}
-.brand .word{font-family:var(--serif);font-weight:700;font-size:28px;letter-spacing:.5px;color:var(--navy);line-height:1}
+.brand .word{font-family:var(--logo);font-weight:700;font-size:28px;letter-spacing:.5px;color:var(--navy);line-height:1}
 .brand.light .word{color:#fff}
 .nav a{font-weight:600;font-size:15px}
 .nav a.on{color:var(--navy);border-bottom-color:var(--gold)}
@@ -368,7 +368,7 @@ input:focus,select:focus{border-color:var(--teal);outline:0;box-shadow:0 0 0 3px
 /* footer */
 .foot{background:var(--navy);border-top:4px solid var(--gold);color:rgba(255,255,255,.75)}
 .foot-in{display:grid;grid-template-columns:auto 1fr auto;gap:32px;align-items:start;padding:36px 24px;font-size:13px;color:rgba(255,255,255,.72)}
-.foot-brand p{margin:8px 0 0;color:var(--gold);font-family:var(--serif);font-size:15px}
+.foot-brand p{margin:8px 0 0;color:var(--gold);font-family:var(--logo);font-size:15px}
 .foot-links{display:flex;flex-direction:column;gap:8px}
 .foot a{color:#fff;text-decoration:none}
 .foot a:hover{text-decoration:underline}
@@ -406,3 +406,67 @@ input:focus,select:focus{border-color:var(--teal);outline:0;box-shadow:0 0 0 3px
   .action{padding-right:56px}
   .page>h1:first-child{font-size:30px}
 }
+
+/* ---- cycle ring v2: labels stay inside the disc ---- */
+.cycle-ring{border-radius:50%;background:radial-gradient(circle,#fff 0 22%,var(--brand-soft) 22.4% 100%);color:var(--teal)}
+.cycle-ring:before{content:"";position:absolute;inset:-12px;border-radius:50%;border:2px dotted #b5d9d4;pointer-events:none}
+.node{width:auto;gap:6px}
+.node.up{flex-direction:column-reverse}
+.node b{max-width:96px;font-size:13px;line-height:1.2;background:rgba(255,255,255,.0)}
+.ring-center{width:40%}
+.ring-center small{display:block;font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:var(--teal);font-weight:700;margin-bottom:4px}
+.ring-center b{font-size:19px;line-height:1.2;margin:0}
+.ring-desc{margin:30px auto 0;max-width:440px;background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);border-left:6px solid var(--gold);padding:16px 20px}
+.ring-desc b{display:block;color:var(--navy);font-size:16px;margin-bottom:4px}
+.ring-desc p{margin:0;font-size:15px}
+@media (max-width:520px){
+  .node b{max-width:78px;font-size:11.5px}
+  .ring-center{width:38%}.ring-center b{font-size:15px}.ring-center small{font-size:9.5px}
+}
+
+/* ---- four profiles ---- */
+.quad-wrap{display:grid;grid-template-columns:34px 1fr;grid-template-rows:1fr auto;gap:8px}
+.quad-y{display:flex;flex-direction:column;justify-content:space-between;align-items:center;font-size:12px;color:var(--ink-3);padding:6px 0}
+.quad-y b{writing-mode:vertical-rl;transform:rotate(180deg)}
+.quad-y b,.quad-x b{color:var(--navy);font-size:13px;letter-spacing:1.2px;text-transform:uppercase}
+.quad-x{grid-column:2;display:flex;justify-content:space-between;font-size:12px;color:var(--ink-3)}
+.quad{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.qc{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:18px;border-top:6px solid var(--teal);position:relative}
+.qc.q2{border-top-color:var(--navy)}.qc.q3{border-top-color:var(--gold)}.qc.q4{border-top-color:#7cc4ba}
+.qc i{position:absolute;right:14px;top:14px;font-style:normal;font-weight:700;font-size:12px;color:#fff;background:var(--navy);border-radius:999px;padding:3px 9px}
+.qc b{display:block;font-family:var(--serif);font-size:19px;color:var(--navy);padding-right:44px}
+.qc small{display:block;font-size:12px;color:var(--teal);font-weight:700;margin:4px 0 8px}
+.qc p{margin:0;font-size:14px;line-height:1.55}
+@media (max-width:560px){.quad{grid-template-columns:1fr 1fr;gap:8px}.qc{padding:14px 12px}.qc b{font-size:16px;padding-right:0;margin-top:22px}.qc p{font-size:13px}.qc i{left:12px;right:auto;top:12px}}
+
+/* Public Sans headings */
+h1,h2,.auth-title,.qc b,.action b,.ring-center b,.lib-card h3{font-weight:800;letter-spacing:-.8px}
+h2,.qc b,.action b,.lib-card h3,.auth-title{letter-spacing:-.4px}
+
+/* ---- cycle wheel v3 (segmented, icons, description in the center) ---- */
+.wheel{position:relative;width:100%;aspect-ratio:1/1;--accent:var(--navy)}
+.wheel-art{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.seg{cursor:pointer;outline:none;transition:transform .25s ease,opacity .45s ease,filter .2s}
+.seg path{stroke:#fff;stroke-width:4;stroke-linejoin:round}
+.seg text{fill:currentColor;font-family:var(--sans);font-weight:700;font-size:13px;text-anchor:middle}
+.seg text.num{font-size:12px;opacity:.75;letter-spacing:1px}
+.seg:hover,.seg.on,.seg:focus-visible{transform:translate(var(--dx),var(--dy))}
+.seg:hover path,.seg.on path{filter:drop-shadow(0 6px 10px rgba(27,58,92,.28))}
+.seg:focus-visible path{stroke:var(--gold);stroke-width:5}
+.wheel.pre .seg{opacity:0;transform:scale(.86);transform-origin:200px 200px}
+.wheel.in .seg{animation:segIn .55s cubic-bezier(.2,.8,.2,1) both;animation-delay:var(--d);transform-origin:200px 200px}
+@keyframes segIn{from{opacity:0;transform:scale(.86) rotate(-14deg)}to{opacity:1;transform:none}}
+.wheel.in .seg.on,.wheel.in .seg:hover{animation:none;transform:translate(var(--dx),var(--dy))}
+.wheel-center{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:50%;aspect-ratio:1/1;border-radius:50%;background:#fff;
+  box-shadow:inset 0 0 0 6px var(--brand-soft),0 10px 30px -14px rgba(27,58,92,.4);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:9%}
+.wheel-center small{font-size:11px;letter-spacing:1.4px;text-transform:uppercase;font-weight:700;color:var(--accent);transition:color .2s}
+.wheel-center b{font-size:19px;color:var(--navy);line-height:1.2;margin:4px 0 6px;font-weight:800;letter-spacing:-.3px}
+.wheel-center p{margin:0;font-size:13px;line-height:1.45;color:var(--ink-2)}
+.cycle-wrap .ring-desc{display:none}
+@media (max-width:600px){
+  .wheel-center p{display:none}
+  .wheel-center b{font-size:15px}
+  .wheel-center small{font-size:9.5px}
+  .cycle-wrap .ring-desc{display:block;margin-top:22px}
+}
+@media (prefers-reduced-motion:reduce){.seg{transition:none}.wheel.in .seg{animation:none}}
