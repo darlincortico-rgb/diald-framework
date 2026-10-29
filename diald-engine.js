@@ -20,7 +20,8 @@
       note: 'Literacy is ahead of oral language. Look for instructional strengths to build on.' }
   };
 
-  const valid = v => Number.isInteger(v) && v >= 1 && v <= 6;
+  // Levels are 1–6; ACCESS can report decimals such as 3.4.
+  const valid = v => typeof v === 'number' && isFinite(v) && v >= 1 && v <= 6;
   const complete = p => p && DOMAINS.every(d => valid(p[d]));
 
   // High = every domain in the pair is at or above the reference level.
@@ -64,15 +65,21 @@
       dims.growth = { status: 'insufficient', text: 'Enter at least two assessment periods to see change over time.' };
     } else {
       const a = rows[rows.length - 2].levels, b = latest.levels;
-      const flat = DOMAINS.filter(d => b[d] <= a[d] && b[d] < 5);
+      // A domain whose level did not change but whose scale score went up is growing inside its band.
+      const sa = a.scale || {}, sb = b.scale || {};
+      const inBand = DOMAINS.filter(d => b[d] <= a[d] && b[d] < 5 && Number(sb[d]) > Number(sa[d]));
+      const flat = DOMAINS.filter(d => b[d] <= a[d] && b[d] < 5 && !inBand.includes(d));
       const fewYears = years !== null && years < 3;
       if (flat.length && !fewYears) {
         dims.growth = { status: 'concern', domains: flat, text: 'No level change in ' + list(flat) + ' across the last two periods' + (years !== null ? ' after ' + years + ' years of services.' : '.') + ' Unchanged levels may still hide growth inside a band.' };
       } else if (flat.length && fewYears) {
         dims.growth = { status: 'no-concern', domains: flat, text: 'Some levels did not change (' + list(flat) + '), but the learner has received services for fewer than 3 years. Keep monitoring.' };
+      } else if (inBand.length) {
+        dims.growth = { status: 'no-concern', domains: inBand, text: 'Levels in ' + list(inBand) + ' did not change, but the scale score went up: growth inside the band.' };
       } else {
         dims.growth = { status: 'no-concern', text: 'Every domain moved up, or is already at a high level, across the last two periods.' };
       }
+      if (inBand.length && dims.growth.status === 'concern') dims.growth.text += ' Scale scores rose in ' + list(inBand) + ' (growth inside the band).';
     }
 
     // (b) Persistence of an oral- or literacy-dominant configuration.

@@ -105,14 +105,28 @@
 
   /* ---------- header account area ---------- */
   function renderAcct() {
+    const name = (profile && profile.full_name) || user && (user.email || '') || '';
+    const initial = (name.trim()[0] || 'D').toUpperCase();
     const html = user
-      ? `<a href="#/profile" style="color:inherit;text-decoration:none" title="Edit profile">${esc((profile && profile.full_name) || user.email || 'Signed in')}</a><button class="btn" id="signout">Sign out</button>`
+      ? `<div class="acct-menu"><button class="avatar" id="acct-btn" aria-haspopup="true" aria-expanded="false" title="${esc(name)}">${esc(initial)}</button>
+          <div class="acct-pop" id="acct-pop" hidden>
+            <div class="acct-who"><span class="avatar big">${esc(initial)}</span><div><b>${esc(name)}</b><small>${esc(user.email || '')}</small></div></div>
+            <a href="#/profile">Profile &amp; settings</a><a href="#/plans">My plans</a><button id="signout" type="button">Sign out</button>
+          </div></div>`
       : `<a class="btn" href="#/login">Sign in</a><a class="btn primary" href="#/login?mode=signup">Create account</a>`;
     document.getElementById('acct').innerHTML = html;
-    document.getElementById('acct-m').innerHTML = user ? `<a href="#" id="signout-m">Sign out</a>` : `<a href="#/login">Sign in</a>`;
+    document.getElementById('acct-m').innerHTML = user ? `<a href="#/profile">Profile &amp; settings</a><a href="#" id="signout-m">Sign out</a>` : `<a href="#/login">Sign in</a>`;
     const so = async e => { e.preventDefault(); await sb.auth.signOut(); toast('Signed out.'); location.hash = '#/'; };
     const b1 = document.getElementById('signout'), b2 = document.getElementById('signout-m');
     if (b1) b1.onclick = so; if (b2) b2.onclick = so;
+    const btn = document.getElementById('acct-btn'), pop = document.getElementById('acct-pop');
+    if (btn) {
+      const close = () => { pop.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
+      btn.onclick = e => { e.stopPropagation(); pop.hidden = !pop.hidden; btn.setAttribute('aria-expanded', String(!pop.hidden)); };
+      pop.onclick = e => { if (e.target.closest('a')) close(); };
+      document.addEventListener('click', e => { if (!pop.hidden && !pop.contains(e.target)) close(); });
+      document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+    }
   }
   document.getElementById('menu-btn').onclick = () => {
     const n = document.getElementById('nav'); n.classList.toggle('open');
@@ -153,7 +167,9 @@
     const segs = CYCLE.map(([t], i) => {
       const L = STAGE_LOOK[i], a0 = -Math.PI / 2 - step / 2 + i * step, a1 = a0 + step, am = a0 + step / 2;
       const d = `M${pt(RO, a0)} A${RO} ${RO} 0 0 1 ${pt(RO, a1)} ${joint(a1, true)} L${pt(RI, a1)} A${RI} ${RI} 0 0 0 ${pt(RI, a0)} ${joint(a0, false)} Z`;
-      const mx = C + RM * Math.cos(am), my = C + RM * Math.sin(am);
+      // Label block positions, solved so text stays inside each piece (radius, angle shift).
+      const [lr, lt] = [[142, 0], [152, 0.1], [140, -0.18], [142, 0.2], [150, -0.18]][i];
+      const mx = +(C + lr * Math.cos(am + lt)).toFixed(1), my = +(C + lr * Math.sin(am + lt)).toFixed(1);
       const words = t.split(' ');
       const label = words.length > 1
         ? `<text x="${mx}" y="${my + 22}">${esc(words[0])}</text><text x="${mx}" y="${my + 37}">${esc(words.slice(1).join(' '))}</text>`
@@ -182,17 +198,33 @@
     const box = document.getElementById(id); if (!box) return;
     const segs = [...box.querySelectorAll('[data-node]')];
     const set = (k, v) => { const el = document.getElementById(id + k); if (el) el.textContent = v; };
-    segs.forEach(g => {
-      const pick = () => {
-        segs.forEach(x => { x.classList.toggle('on', x === g); x.setAttribute('aria-pressed', x === g); });
-        const k = Number(g.dataset.node), [t, d] = CYCLE[k];
-        box.style.setProperty('--accent', STAGE_LOOK[k].c);
-        set('-n', 'Stage ' + (k + 1) + ' of 5'); set('-t', t); set('-d', d);
-        set('-t2', (k + 1) + ' · ' + t); set('-d2', d);
-      };
-      g.onclick = pick; g.onmouseenter = pick; g.onfocus = pick;
-      g.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } };
+    let locked = null;
+    const show = k => {
+      segs.forEach((x, j) => { x.classList.toggle('on', j === k); x.setAttribute('aria-pressed', j === k && locked === k); });
+      if (k === null) {
+        box.style.removeProperty('--accent');
+        set('-n', 'The DIALD cycle'); set('-t', 'Five stages'); set('-d', 'Choose a stage to see what happens in it.');
+        set('-t2', 'The DIALD cycle'); set('-d2', 'Tap a stage to see what happens in it.');
+        return;
+      }
+      const [t, d] = CYCLE[k];
+      box.style.setProperty('--accent', STAGE_LOOK[k].c);
+      set('-n', 'Stage ' + (k + 1) + ' of 5'); set('-t', t); set('-d', d);
+      set('-t2', (k + 1) + ' · ' + t); set('-d2', d);
+    };
+    // Hover previews a stage; a click pins it. Click it again, click outside the wheel, or press Esc to let go.
+    const toggle = k => { locked = locked === k ? null : k; show(locked); };
+    segs.forEach((g, k) => {
+      g.onclick = e => { e.stopPropagation(); toggle(k); };
+      g.onmouseenter = () => { if (locked === null) show(k); };
+      g.onfocus = () => { if (locked === null) show(k); };
+      g.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(k); } };
     });
+    box.onmouseleave = () => { if (locked === null) show(null); };
+    const reset = () => { if (!document.body.contains(box)) { document.removeEventListener('click', outside); document.removeEventListener('keydown', esc); return; } if (locked !== null) { locked = null; show(null); } };
+    const outside = e => { if (!box.contains(e.target)) reset(); };
+    const esc = e => { if (e.key === 'Escape') reset(); };
+    document.addEventListener('click', outside); document.addEventListener('keydown', esc);
     // Segments appear one after another when the wheel scrolls into view.
     if ('IntersectionObserver' in window) {
       box.classList.add('pre');
@@ -201,7 +233,25 @@
     }
   }
 
-  function home() { if (user) welcomeHome(); else landing('home', 'signin'); }
+  function home() { if (user) dashboard(); else landing('home', 'signin'); }
+
+  // Signed-in home: the class dashboard. The roster file is read in the browser (diald-roster.js).
+  function dashboard() {
+    if (!window.DIALDRoster) { welcomeHome(); return; }
+    window.DIALDRoster.render(main, {
+      esc, profile, toast,
+      openStudent: st => {
+        A = { planId: null, planNumber: null, inputs: st.inputs, ran: true, stage: 1, selected: [], progress: [], dirty: true, localName: st.name };
+        persistA(); location.hash = '#/analyze?keep=1';
+      },
+      afterEmpty: async () => {
+        if (!sb) return;
+        const { count } = await sb.from('plans').select('id', { count: 'exact', head: true });
+        const el = document.getElementById('plan-count');
+        if (el && typeof count === 'number') el.textContent = count ? `${count} saved plan${count === 1 ? '' : 's'}. Reopen them and record progress.` : 'No saved plans yet.';
+      }
+    });
+  }
 
   function landing(next, mode) {
     document.body.classList.add('public');
@@ -326,7 +376,7 @@
         <div class="sec-in how">
           <div>
             <div class="actions">
-              <a class="action" href="#/analyze?new=1"><b>Find supports</b><span>Enter a learner’s levels and get matching pathways.</span><i aria-hidden="true">→</i></a>
+              <a class="action" href="#/analyze?new=1"><b>Learner Trajectory</b><span>Analyze one learner’s levels over time and get matching pathways.</span><i aria-hidden="true">→</i></a>
               <a class="action gold" href="#/library"><b>Browse the library</b><span>Pathways and activities with adaptations for levels 1–4.</span><i aria-hidden="true">→</i></a>
               <a class="action navy" href="#/plans"><b>My plans</b><span id="plan-count">Reopen saved plans and record progress.</span><i aria-hidden="true">→</i></a>
             </div>
@@ -365,7 +415,9 @@
       history.replaceState(null, '', '#/analyze'); setNav('analyze');
     } else if (q.get('new') === '1') {
       A = freshA(); persistA(); history.replaceState(null, '', '#/analyze');
-    } else if (A.planId && !q.get('keep')) {
+    } else if (q.get('keep')) {
+      history.replaceState(null, '', '#/analyze');
+    } else if (A.planId) {
       // leaving a saved plan: start fresh
       A = freshA(); persistA();
     }
@@ -375,12 +427,12 @@
   function renderAnalyze() {
     const res = result();
     if (!res && A.stage > 0) A.stage = 0;
-    const title = A.planId ? 'Plan ' + A.planNumber : 'Find supports';
+    const title = A.planId ? (A.title || 'Plan ' + A.planNumber) : A.localName || 'Learner Trajectory';
     main.innerHTML = `<div class="page">
       <div class="row" style="justify-content:space-between">
-        <div><div class="eyebrow">${A.planId ? 'Saved plan' : 'DIALD analysis'}${A.sample ? ' · Sample case (fictional)' : ''}</div><h1 style="margin-bottom:4px">${esc(title)}</h1>
-        <p class="small" style="margin:0">Levels only. No names, IDs, or details that identify a student.</p></div>
-        <div class="row">${A.planId ? '<a class="btn" href="#/plans">← My plans</a>' : ''}<a class="btn" href="#/analyze?new=1">Start new</a>${!A.planId ? '<a class="btn" href="#/analyze?sample=ana">Load sample case</a>' : ''}</div>
+        <div><div class="eyebrow">${A.planId ? 'Saved plan' : A.localName ? 'From your file' : 'DIALD analysis'}${A.sample ? ' · Sample case (fictional)' : ''}</div><h1 style="margin-bottom:4px">${esc(title)}${A.planId && A.localName ? ` <span class="local-name">${esc(A.localName)}</span>` : ''}</h1>
+        <p class="small" style="margin:0">${A.localName ? '<span class="local-chip">🔒 Name shown only on this computer</span> Saving a plan stores levels and results, never the name.' : 'Levels only. No names, IDs, or details that identify a student.'}</p></div>
+        <div class="row">${A.planId ? '<a class="btn" href="#/plans">← My plans</a>' : A.localName ? '<a class="btn" href="#/">← My students</a>' : ''}<a class="btn" href="#/analyze?new=1">Start new</a>${!A.planId ? '<a class="btn" href="#/analyze?sample=ana">Load sample case</a>' : ''}</div>
       </div>
       <div class="stages" role="tablist">${STAGES.map((s, i) => `<button role="tab" data-stage="${i}" class="${A.stage === i ? 'on' : ''}" ${i > 0 && !res ? 'disabled' : ''} aria-selected="${A.stage === i}"><span>0${i + 1}</span>${s}</button>`).join('')}</div>
       <div id="stage"></div>
@@ -392,7 +444,9 @@
   }
 
   function levelSelect(pi, d, v) {
-    const opts = ['<option value="">—</option>'].concat(Array.from({ length: C.maxLevel }, (_, i) => `<option ${v === i + 1 ? 'selected' : ''}>${i + 1}</option>`));
+    const vals = Array.from({ length: C.maxLevel }, (_, i) => i + 1);
+    if (v != null && !vals.includes(v)) vals.push(v), vals.sort((a, b) => a - b); // decimals or level 6 from a file
+    const opts = ['<option value="">—</option>'].concat(vals.map(x => `<option ${v === x ? 'selected' : ''}>${x}</option>`));
     return `<select id="lv-${pi}-${d}" aria-label="${esc(A.inputs.periods[pi].label)} ${d}">${opts.join('')}</select>`;
   }
 
@@ -591,7 +645,7 @@
     if (!sb || !user) { location.hash = '#/login?next=analyze'; return; }
     const res = result(); const btn = document.getElementById('save'); btn.disabled = true; btn.textContent = 'Saving…';
     const row = {
-      inputs: A.inputs,
+      inputs: cleanInputs(A.inputs),
       result: { quadrant: res.quadrant && res.quadrant.id, risk: res.risk.level, priorities: res.priorities, concerns: res.concerns },
       pathway_ids: A.selected, progress: A.progress.filter(e => A.selected.includes(e.pathwayId))
     };
@@ -606,9 +660,26 @@
     }
     if (out.error) { saveError(out.error); return; }
     A.planId = out.data.id; A.planNumber = out.data.plan_number; A.dirty = false; A.sample = false; persistA();
+    if (A.localName && window.DIALDRoster) window.DIALDRoster.rememberPlanName(A.planId, A.localName);
     toast('Plan ' + A.planNumber + ' saved.');
     history.replaceState(null, '', '#/plan/' + A.planId); setNav('plans');
     renderAnalyze();
+  }
+  // Only the allowed fields go to the server (the database checks the same list).
+  function cleanInputs(I) {
+    const n = v => (typeof v === 'number' && isFinite(v) ? v : null);
+    const lab = v => (window.DIALDRoster ? window.DIALDRoster.cleanLabel(v || '') : String(v || '').slice(0, 24)) || 'Year';
+    return {
+      grade: I.grade || '', years: I.years === '' || I.years == null ? '' : n(Number(I.years)), highLevel: n(I.highLevel) || 3,
+      periods: (I.periods || []).map(p => {
+        const o = { label: lab(p.label) }; DOMAINS.forEach(d => { o[d] = n(p[d]); });
+        if (p.scale) { o.scale = {}; DOMAINS.forEach(d => { if (n(p.scale[d])) o.scale[d] = p.scale[d]; }); }
+        if (n(p.overall)) o.overall = p.overall;
+        return o;
+      }),
+      academic: { status: (I.academic && I.academic.status) || 'unknown', trend: (I.academic && I.academic.trend) || 'unknown' },
+      priorResponse: I.priorResponse || 'none'
+    };
   }
   function saveError(err) { console.error(err); toast('Could not save: ' + (err.message || 'try again')); renderSaveBar(result()); }
 
@@ -618,13 +689,24 @@
     main.innerHTML = '<div class="page"><p>Loading plan…</p></div>';
     const { data, error } = await sb.from('plans').select('*').eq('id', id).single();
     if (error || !data) { main.innerHTML = '<div class="page"><div class="card"><p>This plan was not found.</p><a class="btn" href="#/plans">My plans</a></div></div>'; return; }
-    A = { planId: data.id, planNumber: data.plan_number, inputs: data.inputs, ran: true, stage: 1, selected: data.pathway_ids || [], selectedTouched: true, progress: data.progress || [], dirty: false };
+    const names = window.DIALDRoster ? window.DIALDRoster.planNames() : {};
+    A = { planId: data.id, planNumber: data.plan_number, title: data.title || '', localName: names[data.id] || '', inputs: data.inputs, ran: true, stage: 1, selected: data.pathway_ids || [], selectedTouched: true, progress: data.progress || [], dirty: false };
     persistA(); renderAnalyze();
   }
 
   /* ---------- MY PLANS ---------- */
+  const planTitle = r => (r.title && r.title.trim()) || ('Plan ' + r.plan_number);
+  // Plan names must not identify a student: no long numbers (IDs) and no names from a loaded file.
+  function titleProblem(t) {
+    if (t.length > 60) return 'Use 60 characters or fewer.';
+    if (/\d{5,}/.test(t)) return 'This looks like a student ID. Use a description instead, like “Period 3 – reading”.';
+    const names = (window.DIALDLocalNames && window.DIALDLocalNames()) || [];
+    const low = t.toLowerCase();
+    if (names.some(n => n.length > 2 && low.includes(n.toLowerCase()))) return 'This looks like a student’s name. Use a code or a description instead.';
+    return '';
+  }
   async function requireLogin(next) {
-    if (!sb) { main.innerHTML = '<div class="page"><div class="card"><p>Accounts are not available right now. You can still use Find supports and the Library.</p></div></div>'; return false; }
+    if (!sb) { main.innerHTML = '<div class="page"><div class="card"><p>Accounts are not available right now. You can still use Learner Trajectory and the Library.</p></div></div>'; return false; }
     if (!user) { location.hash = '#/login?next=' + encodeURIComponent(next); return false; }
     return true;
   }
@@ -632,39 +714,45 @@
   async function plansPage() {
     if (!(await requireLogin('plans'))) return;
     main.innerHTML = '<div class="page"><p>Loading…</p></div>';
-    const { data, error } = await sb.from('plans').select('id, plan_number, created_at, updated_at, result, pathway_ids, progress').order('plan_number', { ascending: false });
+    let { data, error } = await sb.from('plans').select('id, plan_number, title, created_at, updated_at, result, pathway_ids, progress').order('plan_number', { ascending: false });
+    if (error && /title/.test(error.message || '')) ({ data, error } = await sb.from('plans').select('id, plan_number, created_at, updated_at, result, pathway_ids, progress').order('plan_number', { ascending: false }));
     const rows = data || [];
+    const localNames = window.DIALDRoster ? window.DIALDRoster.planNames() : {};
     main.innerHTML = `<div class="page">
       <div class="row" style="justify-content:space-between"><div><div class="eyebrow">Your workspace</div><h1>My plans</h1></div><a class="btn primary" href="#/analyze?new=1">+ New analysis</a></div>
       ${error ? `<div class="card"><p class="err">Could not load plans: ${esc(error.message)}</p></div>` : ''}
       <div class="card">${rows.length ? `<table class="tbl"><thead><tr><th>Plan</th><th>Quadrant</th><th>Risk</th><th>Pathways</th><th>Response</th><th>Updated</th><th></th></tr></thead><tbody>
         ${rows.map(r => { const resp = (r.progress || []).map(e => E.classifyResponse(e).level); return `<tr>
-          <td><a href="#/plan/${r.id}"><b>Plan ${r.plan_number}</b></a></td>
+          <td class="plan-name"><a href="#/plan/${r.id}"><b>${esc(planTitle(r))}</b></a>${localNames[r.id] ? `<span class="local-name">${esc(localNames[r.id])}</span>` : ''} <button class="icon-btn" data-ren="${r.id}" data-t="${esc(r.title || '')}" data-n="${r.plan_number}" title="Rename" aria-label="Rename ${esc(planTitle(r))}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></svg></button></td>
           <td>${r.result && r.result.quadrant ? esc(r.result.quadrant) : '—'}</td>
           <td>${r.result ? `<span class="badge ${esc(r.result.risk)}" style="font-size:12px;padding:3px 8px">${esc(r.result.risk)}</span>` : '—'}</td>
           <td>${(r.pathway_ids || []).map(id => pw(id) ? esc(pw(id).title) : '').filter(Boolean).join('<br>') || '—'}</td>
           <td>${resp.length ? resp.map(x => `<span class="badge ${x}" style="font-size:12px;padding:3px 8px">${x}</span>`).join(' ') : '—'}</td>
           <td class="small">${new Date(r.updated_at).toLocaleDateString()}</td>
           <td><button class="btn ghost danger" data-del="${r.id}" data-n="${r.plan_number}">Delete</button></td></tr>`; }).join('')}</tbody></table>`
-        : '<p>No saved plans yet. Run an analysis in <a href="#/analyze">Find supports</a> and choose “Save as a plan”.</p>'}</div>
-      <div class="card"><h3>Account</h3>
-        ${profile ? `<p style="margin:0">${esc(profile.full_name)} · ${esc(profile.role)}<br><span class="small">${esc(profile.district)}, ${esc(profile.state)} · Grades ${esc((profile.grades || []).join(', '))}</span></p><p><a href="#/profile">Edit profile</a></p>` : ''}
-        <p class="small">Signed in as ${esc(user.email)}. DIALD stores your account, your teacher profile, and your saved plans. It never stores student information.</p>
-        <div class="row"><button class="btn" id="out">Sign out</button><button class="btn danger" id="delacct">Delete my account and all plans</button></div><p id="del-msg" class="err"></p></div>
+        : '<p>No saved plans yet. Analyze a learner in <a href="#/analyze">Learner Trajectory</a> or open a student from your <a href="#/">Dashboard</a>, and choose “Save as a plan”.</p>'}</div>
+      <p class="small">Plans store levels, results, and the pathways you chose. Never student names or IDs. ${Object.keys(localNames).length ? '🔒 Names next to a plan are kept only on this computer. <a href="#" id="keysheet">Download your key sheet</a> to keep a copy. ' : ''}Account options are in <a href="#/profile">Profile &amp; settings</a>.</p>
     </div>`;
     $$('[data-del]').forEach(b => b.onclick = async () => {
       if (b.dataset.armed !== '1') { b.dataset.armed = '1'; b.textContent = 'Click again to delete'; return; }
       const { error: e } = await sb.from('plans').delete().eq('id', b.dataset.del);
-      if (e) toast('Could not delete: ' + e.message); else { toast('Plan ' + b.dataset.n + ' deleted.'); if (A.planId === b.dataset.del) { A = freshA(); persistA(); } plansPage(); }
+      if (e) toast('Could not delete: ' + e.message); else { if (window.DIALDRoster) window.DIALDRoster.forgetPlanName(b.dataset.del); toast('Plan ' + b.dataset.n + ' deleted.'); if (A.planId === b.dataset.del) { A = freshA(); persistA(); } plansPage(); }
     });
-    $('#out').onclick = async () => { await sb.auth.signOut(); location.hash = '#/'; };
-    $('#delacct').onclick = async () => {
-      const b = $('#delacct');
-      if (b.dataset.armed !== '1') { b.dataset.armed = '1'; b.textContent = 'Click again: this cannot be undone'; return; }
-      const { error: e } = await sb.rpc('delete_my_account');
-      if (e) { $('#del-msg').textContent = 'Could not delete the account: ' + e.message; return; }
-      await sb.auth.signOut(); A = freshA(); persistA(); toast('Your account and plans were deleted.'); location.hash = '#/';
-    };
+    const ks = $('#keysheet'); if (ks) ks.onclick = e => { e.preventDefault(); window.DIALDRoster.keySheetCSV(); };
+    $$('[data-ren]').forEach(b => b.onclick = () => {
+      const cell = b.closest('td'), old = b.dataset.t;
+      cell.innerHTML = `<form class="ren"><input maxlength="60" value="${esc(old)}" placeholder="Plan ${b.dataset.n}" aria-label="Plan name"><button class="btn primary" type="submit">Save</button><button class="btn ghost" type="button">Cancel</button><small class="err"></small></form>`;
+      const f = cell.querySelector('form'), inp = f.querySelector('input'); inp.focus(); inp.select();
+      f.querySelector('[type=button]').onclick = () => plansPage();
+      f.onsubmit = async e => {
+        e.preventDefault();
+        const t = inp.value.trim(), bad = titleProblem(t);
+        if (bad) { f.querySelector('small').textContent = bad; return; }
+        const { error: er } = await sb.from('plans').update({ title: t || null }).eq('id', b.dataset.ren);
+        if (er) { f.querySelector('small').textContent = /title/.test(er.message) ? 'Renaming needs a quick database update (see the setup notes).' : 'Could not rename: ' + er.message; return; }
+        toast('Plan renamed.'); plansPage();
+      };
+    });
   }
 
   /* ---------- LIBRARY ---------- */
@@ -832,8 +920,8 @@
     const meta = user.user_metadata || {};
     const P = profile || { full_name: meta.full_name || meta.name || '', district: '', state: 'Connecticut', grades: [], role: '' };
     main.innerHTML = `<div class="page"><div class="card auth" style="max-width:560px">
-      <div class="eyebrow">Teacher profile</div>
-      <h1 style="font-size:30px">${first ? 'Tell us about you' : 'Edit your profile'}</h1>
+      <div class="eyebrow">${first ? 'Teacher profile' : 'Profile &amp; settings'}</div>
+      <h1 style="font-size:30px">${first ? 'Tell us about you' : 'Your profile'}</h1>
       <p class="small">${first ? 'One last step. ' : ''}This is information about <b>you</b>, the educator. It helps us understand where DIALD is used. Never enter student information.</p>
       <form id="pf" novalidate>
         <label for="pf-name">Full name</label><input id="pf-name" maxlength="120" autocomplete="name" value="${esc(P.full_name)}" required>
@@ -846,7 +934,31 @@
         <p id="pf-msg" class="err" role="alert"></p>
         <button class="btn primary" type="submit">${first ? 'Save and continue' : 'Save profile'}</button>
         ${first ? '' : '<a class="btn ghost" href="#/plans">Cancel</a>'}
-      </form></div></div>`;
+      </form></div>
+      ${first ? '' : `<div class="card auth settings" style="max-width:560px">
+        <h2>Account</h2>
+        <p class="small" style="margin-top:0">Signed in as <b>${esc(user.email)}</b>. DIALD stores your account, this profile, and your saved plans. It never stores student names or IDs.</p>
+        <button class="btn" id="out" type="button">Sign out</button>
+        <details class="danger-zone"><summary>Delete account</summary>
+          <p>This permanently deletes your account, your profile, and <b>all your saved plans</b>. It cannot be undone.</p>
+          <label for="del-word">Type <b>DELETE</b> to confirm</label>
+          <input id="del-word" autocomplete="off" spellcheck="false">
+          <button class="btn danger-solid" id="delacct" type="button" disabled>Delete my account and all plans</button>
+          <p id="del-msg" class="err"></p>
+        </details>
+      </div>`}
+      </div>`;
+    if (!first) {
+      $('#out').onclick = async () => { await sb.auth.signOut(); location.hash = '#/'; };
+      $('#del-word').oninput = e => { $('#delacct').disabled = e.target.value.trim() !== 'DELETE'; };
+      $('#delacct').onclick = async () => {
+        if ($('#del-word').value.trim() !== 'DELETE') return;
+        $('#delacct').disabled = true;
+        const { error: er } = await sb.rpc('delete_my_account');
+        if (er) { $('#del-msg').textContent = 'Could not delete the account: ' + er.message; $('#delacct').disabled = false; return; }
+        await sb.auth.signOut(); A = freshA(); persistA(); toast('Your account and plans were deleted.'); location.hash = '#/';
+      };
+    }
     $('#pf').onsubmit = async e => {
       e.preventDefault();
       const row = {
@@ -874,14 +986,15 @@
   function privacyPage() {
     main.innerHTML = `<div class="page prose"><div class="eyebrow">Last updated October 2026</div><h1>Privacy policy</h1>
       <p class="lead">DIALD is built so that teachers can use it without sharing any student information.</p>
-      <h2>What we store</h2><ul><li>Your email address and password (managed securely by our authentication provider), or your Google sign-in.</li><li>Your teacher profile: your name, school district, state, the grades you teach, and your role.</li><li>Plans you choose to save: proficiency levels, years of services, general academic and response categories, the pathways you selected, and progress numbers.</li></ul>
+      <h2>What we store</h2><ul><li>Your email address and password (managed securely by our authentication provider), or your Google sign-in.</li><li>Your teacher profile: your name, school district, state, the grades you teach, and your role.</li><li>Plans you choose to save: proficiency levels and scale scores, test year labels, grade band, years of services, general academic and response categories, the pathways you selected, and progress numbers.</li></ul>
       <h2>What we do not store</h2><ul><li>Student names, IDs, dates of birth, schools, or any other information that identifies a student.</li><li>Free-text notes about students. The tool has no free-text fields for student information.</li></ul>
       <p>Please do not enter identifying information anywhere on this site.</p>
-      <h2>Without an account</h2><p>You can use Find supports and the Library without an account. What you enter stays in your browser tab and is not sent to our servers.</p>
+      <h2>Files you analyze</h2><p>When you use <b>Analyze my file</b>, your file is read <b>inside your browser, on your computer</b>. It is not uploaded, and student names and IDs are never sent to our servers. If you choose “Keep this file on this computer,” it is kept in your browser’s storage until you clear it. Otherwise it is forgotten when you close the tab.</p>
+      <p>If you save a plan for a student from your file, only the allowed fields are saved: levels, scale scores, test year labels, grade band, years of services, results, chosen pathways, and progress numbers. The student’s name stays on your computer, linked to the plan, so you can recognize it. Our database also rejects any field that is not on this list.</p>
       <h2>How we use data</h2><p>To run the site: to let you sign in, save, and reopen your plans. Your teacher profile also helps the author understand where and how DIALD is used (for example, how many teachers use it by state, grade, or role). Results are reported only in summary form, never by name. We do not sell, rent, or share your data, and we do not use it for advertising.</p>
       <h2>Who can see your plans</h2><p>Only you. Database rules allow each account to read and change its own plans only.</p>
       <h2>Where data is stored</h2><p>On servers in the United States operated by our database provider (Supabase).</p>
-      <h2>Delete your data</h2><p>You can delete any plan, or your whole account and all plans, at any time from <a href="#/plans">My plans</a>.</p>
+      <h2>Delete your data</h2><p>You can delete any plan from <a href="#/plans">My plans</a>, or your whole account and all plans from <a href="#/profile">Profile &amp; settings</a>. To remove a file from this computer, choose “Clear file” on your dashboard.</p>
       <h2>Contact</h2><p>Questions: ${contact()}.</p></div>`;
   }
   function termsPage() {
