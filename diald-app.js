@@ -66,12 +66,22 @@
     document.getElementById('menu-btn').setAttribute('aria-expanded', 'false');
   }
   function route() {
+    // In-page anchors such as the skip link (#main) are not routes.
+    if (location.hash && !location.hash.startsWith('#/') && main.innerHTML.trim()) return;
     const { parts, q } = parseHash();
     const p = parts[0] || '';
     // A signed-in teacher completes the profile form before using the workspace.
     if (user && profileLoaded && !profile && !['profile', 'privacy', 'terms', 'reset', 'login'].includes(p)) {
       const here = location.hash.replace(/^#\/?/, '') || 'plans';
       location.hash = '#/profile?next=' + encodeURIComponent(here);
+      return;
+    }
+    if (p === 'home') { location.hash = '#/'; return; }
+    document.body.classList.toggle('public', !user);
+    // Everything except the landing, account and policy pages needs a free account.
+    if (sb && !user && !['', 'login', 'reset', 'privacy', 'terms'].includes(p)) {
+      const here = location.hash.replace(/^#\/?/, '');
+      location.hash = '#/login?next=' + encodeURIComponent(here);
       return;
     }
     const map = { '': 'home', analyze: 'analyze', plan: 'plans', library: 'library', pathway: 'library', activity: 'library', plans: 'plans' };
@@ -110,40 +120,157 @@
   };
 
   /* ---------- HOME ---------- */
-  function home() {
-    main.innerHTML = `<div class="page">
-      <section class="hero">
-        <div>
-          <div class="eyebrow">From Data to Decision</div>
-          <h1>Turn language proficiency levels into instructional decisions.</h1>
-          <p class="lead">DIALD (Data-Informed Academic Language Development) helps teachers read multilingual learners’ Listening, Speaking, Reading, and Writing levels over time, see the pattern, and find a matching intervention pathway in the DIALD Library.</p>
-          <div class="row" style="margin:22px 0">
-            <a class="btn primary" href="#/analyze">Find supports →</a>
-            <a class="btn" href="#/analyze?sample=ana">Try a sample case</a>
-            <a class="btn" href="#/library">Browse the Library</a>
+  const CYCLE = [
+    ['Profile', 'Enter each year’s Listening, Speaking, Reading, and Writing levels. Levels only — never names.'],
+    ['Pattern Indicator', 'See the learner’s quadrant, whether oral language and literacy move apart, and a provisional LTEL trajectory risk.'],
+    ['Instructional Focus', 'Get lesson-plan pathways from the DIALD Library that match the learner’s priorities.'],
+    ['Response', 'At the review point, record progress. DIALD reads it as Positive, Partial, or Limited.'],
+    ['Adaptation', 'Keep, adjust, intensify, or change the support. New evidence returns to the Profile.']
+  ];
+  function cycleHTML(id) {
+    const n = CYCLE.length, R = 42; // percent of the ring box
+    return `<div class="cycle-ring" id="${id}">
+      <svg class="ring-art" viewBox="0 0 100 100" aria-hidden="true">
+        <defs><marker id="${id}-ar" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4" markerHeight="4" orient="auto"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+        ${CYCLE.map((_, i) => { const a1 = (i / n) * 2 * Math.PI - Math.PI / 2 + 0.36, a2 = ((i + 1) / n) * 2 * Math.PI - Math.PI / 2 - 0.36;
+          return `<path d="M${50 + R * Math.cos(a1)} ${50 + R * Math.sin(a1)} A${R} ${R} 0 0 1 ${50 + R * Math.cos(a2)} ${50 + R * Math.sin(a2)}" fill="none" stroke="currentColor" stroke-width="0.8" marker-end="url(#${id}-ar)"/>`; }).join('')}
+      </svg>
+      ${CYCLE.map(([t], i) => { const ang = (i / n) * 2 * Math.PI - Math.PI / 2;
+        return `<button type="button" class="node ${i === 0 ? 'on' : ''}" data-node="${i}" style="left:${50 + R * Math.cos(ang)}%;top:${50 + R * Math.sin(ang)}%" aria-pressed="${i === 0}"><span>${i + 1}</span><b>${t}</b></button>`; }).join('')}
+      <div class="ring-center" aria-live="polite"><b id="${id}-t">${CYCLE[0][0]}</b><p id="${id}-d">${CYCLE[0][1]}</p></div>
+    </div>`;
+  }
+  function bindCycle(id) {
+    const box = document.getElementById(id); if (!box) return;
+    box.querySelectorAll('[data-node]').forEach(b => {
+      const pick = () => {
+        box.querySelectorAll('[data-node]').forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', x === b); });
+        const [t, d] = CYCLE[Number(b.dataset.node)];
+        document.getElementById(id + '-t').textContent = t; document.getElementById(id + '-d').textContent = d;
+      };
+      b.onclick = pick; b.onmouseenter = pick; b.onfocus = pick;
+    });
+  }
+
+  function home() { if (user) welcomeHome(); else landing('home', 'signin'); }
+
+  function landing(next, mode) {
+    document.body.classList.add('public');
+    main.innerHTML = `<div class="landing">
+      <section class="band hero-band">
+        <div class="band-in land-hero">
+          <div class="land-head">
+            <div class="eyebrow light">Data-Informed Academic Language Development</div>
+            <h1>From data to decision.</h1>
+            <p class="lead">Read multilingual learners’ language levels over time and choose the right support from a library of lesson plans.</p>
+            <div class="row pills">
+              <a class="pill gold" href="#auth-box" data-auth="signup">Create a free account</a>
+              <a class="pill line" href="#how">See how it works</a>
+            </div>
+            <p class="hero-note"><span class="dot" aria-hidden="true"></span>Levels only. DIALD never asks for student names.</p>
           </div>
-          <div class="privacy-note"><span aria-hidden="true">🔒</span><div><b>No student information.</b> DIALD uses proficiency levels only. Do not enter names, IDs, or any detail that could identify a student. Saved plans store levels and recommendations, never students.</div></div>
-        </div>
-        <div class="card">
-          <div class="eyebrow">Four-Quadrant Language Development Matrix</div>
-          ${matrixHTML(null)}
-          <p class="small" style="margin-top:12px">High and Low are read against a reference level for each context. The quadrant is one piece of evidence, not a label for the student.</p>
+          <aside class="card auth-card" id="auth-box"></aside>
         </div>
       </section>
-      <section class="section">
-        <div class="eyebrow">The DIALD cycle</div>
-        <h2>Five recursive stages</h2>
-        <div class="cycle">
-          ${[['Profile', 'Enter domain levels across years, years of services, and academic evidence.'], ['Pattern Indicator', 'See the quadrant, the oral–literacy pattern, and a provisional LTEL trajectory risk.'], ['Instructional Focus', 'Get matching pathways from the Intervention Library.'], ['Response', 'Record progress on each objective: Positive, Partial, or Limited.'], ['Adaptation', 'Continue, adjust, intensify, fade, or replace support. New evidence returns to the Profile.']]
-            .map(([t, d], i) => `<div class="st"><span>0${i + 1}</span><b>${t}</b><p>${d}</p></div>`).join('')}
+      <nav class="jump" aria-label="On this page">
+        <div class="jump-in">
+          <a href="#how" data-jump="how" class="on">How it works</a>
+          <a href="#about" data-jump="about">About DIALD</a>
+          <a href="#start" data-jump="start">Get started</a>
+        </div>
+      </nav>
+      <section class="sec" id="how">
+        <div class="sec-in how">
+          <div>
+            <div class="eyebrow">The DIALD cycle</div>
+            <h2>Five stages, one continuous cycle.</h2>
+            <p>Each stage feeds the next. When new evidence arrives, it returns to the Profile and the cycle starts again.</p>
+            <p class="small">Tap a stage to see what happens in it.</p>
+          </div>
+          <div class="land-cycle"><div class="ring-bg">${cycleHTML('ring')}</div></div>
         </div>
       </section>
-      <section class="section grid3">
-        <div class="card"><h3>For teachers</h3><p>Make a decision in minutes with data you already have. Every result shows the evidence behind it, so you can question it or override it.</p></div>
-        <div class="card"><h3>Intervention Library</h3><p>Pathways by skill and quadrant. Each activity shows how to adapt it for proficiency levels 1–4 and for your grade band.</p></div>
-        <div class="card"><h3>Safeguards</h3><p>Results are provisional and reviewed by the educator. DIALD never assigns MTSS tiers, special education referrals, or placements.</p></div>
+      <section class="sec tint" id="about">
+        <div class="sec-in">
+          <div class="eyebrow">About DIALD</div>
+          <h2>Questions teachers ask</h2>
+          <div class="acc">
+            <details open><summary><span>What is DIALD?</span><i aria-hidden="true"></i></summary><p>The Data-Informed Academic Language Development Framework. It uses data schools already collect — domain levels from tests like LAS Links or ACCESS — to spot learners who may be moving toward long-term English learner status, and connects them with targeted instruction.</p></details>
+            <details><summary><span>Who is it for?</span><i aria-hidden="true"></i></summary><p>ESOL/TESOL, bilingual, ELA, and content-area teachers, coaches, and leaders who work with multilingual learners in grades K–12.</p></details>
+            <details><summary><span>Do I enter student information?</span><i aria-hidden="true"></i></summary><p>No. DIALD works with proficiency levels only. It never asks for names, IDs, or anything that identifies a student.</p></details>
+            <details><summary><span>Is it free?</span><i aria-hidden="true"></i></summary><p>Yes. Create a free teacher account to use the tool, browse the library, and save your plans.</p></details>
+          </div>
+        </div>
+      </section>
+      <section class="band cta-band" id="start">
+        <div class="band-in cta-in">
+          <div><h2>Ready to turn data into decisions?</h2><p>Free for educators. It takes less than a minute.</p></div>
+          <a class="pill gold" href="#auth-box" data-auth="signup">Create a free account</a>
+        </div>
+      </section>
+      <div class="mob-cta" id="mob-cta">
+        <a class="pill gold" href="#auth-box" data-auth="signup">Create account</a>
+        <a class="pill outline" href="#auth-box" data-auth="signin">Sign in</a>
+      </div>
+    </div>`;
+    const box = document.getElementById('auth-box');
+    authForm(box, next, mode);
+    bindCycle('ring');
+    bindLanding(box);
+  }
+
+  // In-page links on the landing page: jump nav, auth buttons, mobile CTA bar.
+  function bindLanding(box) {
+    main.querySelectorAll('a[href^="#"]:not([href^="#/"])').forEach(a => a.onclick = e => {
+      e.preventDefault();
+      const el = document.getElementById(a.getAttribute('href').slice(1)); if (!el) return;
+      if (a.dataset.auth && box._setMode) box._setMode(a.dataset.auth);
+      const y = el.getBoundingClientRect().top + window.scrollY - (a.dataset.auth ? 96 : 120);
+      window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+      if (a.dataset.auth) setTimeout(() => { const i = box.querySelector('#email'); if (i) i.focus({ preventScroll: true }); }, 450);
+    });
+    const jumps = [...main.querySelectorAll('[data-jump]')], mob = document.getElementById('mob-cta');
+    const onScroll = () => {
+      if (!document.body.contains(box)) { window.removeEventListener('scroll', onScroll); return; }
+      let cur = jumps[0].dataset.jump;
+      jumps.forEach(j => { const s = document.getElementById(j.dataset.jump); if (s && s.getBoundingClientRect().top < 180) cur = j.dataset.jump; });
+      jumps.forEach(j => j.classList.toggle('on', j.dataset.jump === cur));
+      const r = box.getBoundingClientRect();
+      mob.classList.toggle('show', r.bottom < 0);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true }); onScroll();
+  }
+
+  async function welcomeHome() {
+    const first = profile && profile.full_name ? profile.full_name.split(' ')[0] : '';
+    main.innerHTML = `<div>
+      <section class="band hero-band slim">
+        <div class="band-in">
+          <div class="eyebrow light">Your DIALD workspace</div>
+          <h1>${first ? 'Welcome, ' + esc(first) + '.' : 'Welcome.'}</h1>
+          <p class="lead">What would you like to do today?</p>
+        </div>
+      </section>
+      <section class="sec">
+        <div class="sec-in how">
+          <div>
+            <div class="actions">
+              <a class="action" href="#/analyze?new=1"><b>Find supports</b><span>Enter a learner’s levels and get matching pathways.</span><i aria-hidden="true">→</i></a>
+              <a class="action gold" href="#/library"><b>Browse the library</b><span>Pathways and activities with adaptations for levels 1–4.</span><i aria-hidden="true">→</i></a>
+              <a class="action navy" href="#/plans"><b>My plans</b><span id="plan-count">Reopen saved plans and record progress.</span><i aria-hidden="true">→</i></a>
+            </div>
+            <p class="small" style="margin-top:18px">Want to see an example first? <a href="#/analyze?sample=ana">Open the sample case</a>.</p>
+          </div>
+          <div class="land-cycle"><div class="ring-bg">${cycleHTML('ring')}</div></div>
+        </div>
       </section>
     </div>`;
+    bindCycle('ring');
+    if (sb) {
+      const { count } = await sb.from('plans').select('id', { count: 'exact', head: true });
+      const el = document.getElementById('plan-count');
+      if (el && typeof count === 'number') el.textContent = count ? `${count} saved plan${count === 1 ? '' : 's'}. Reopen them and record progress.` : 'No saved plans yet.';
+    }
   }
 
   function matrixHTML(res) {
@@ -547,40 +674,38 @@
   }
 
   /* ---------- AUTH ---------- */
-  function loginPage(q) {
-    const next = q.get('next') || 'plans';
-    let mode = q.get('mode') === 'signup' ? 'signup' : 'signin';
-    if (!sb) { main.innerHTML = '<div class="page"><div class="card auth"><p>Accounts are not available right now.</p></div></div>'; return; }
-    if (user) { location.hash = '#/' + next; return; }
+  // Renders the sign-in / sign-up form inside `host`.
+  function authForm(host, next, mode) {
+    if (!sb) { host.innerHTML = '<p>Accounts are not available right now. Please try again later.</p>'; return; }
+    const $h = s => host.querySelector(s);
     const render = () => {
-      main.innerHTML = `<div class="page"><div class="card auth">
-        <div class="eyebrow">Teacher account</div>
-        <h1 style="font-size:30px">${mode === 'signup' ? 'Create your account' : mode === 'forgot' ? 'Reset your password' : 'Sign in'}</h1>
-        ${mode !== 'forgot' && googleEnabled ? `<button class="btn" id="google" style="width:100%;justify-content:center">Continue with Google</button><div class="divider">or with email</div>` : ''}
+      host.innerHTML = `
+        <h2 class="auth-title">${mode === 'signup' ? 'Create your free account' : mode === 'forgot' ? 'Reset your password' : 'Sign in to DIALD'}</h2>
+        <p class="small" style="margin:0 0 16px">${mode === 'forgot' ? 'We will email you a link to choose a new password.' : 'Free for educators. Use your school or personal email.'}</p>
+        ${mode !== 'forgot' && googleEnabled ? `<button class="btn google" id="google" type="button"><svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.1C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.4 5.7c4.3-4 6.9-9.9 6.9-17.1z"/><path fill="#FBBC05" d="M10.6 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.1C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.4-5.7c-2.1 1.4-4.8 2.3-8.5 2.3-6.2 0-11.5-4.1-13.4-9.9l-7.9 6.1C6.6 42.6 14.6 48 24 48z"/></svg>Continue with Google</button><div class="divider">or with email</div>` : ''}
         <form id="f" novalidate>
           <label for="email">Email</label><input id="email" type="email" autocomplete="email" required>
           ${mode !== 'forgot' ? `<label for="pw" style="margin-top:12px">Password</label><input id="pw" type="password" autocomplete="${mode === 'signup' ? 'new-password' : 'current-password'}" minlength="8" required>` : ''}
-          ${mode === 'signup' ? `<label class="row" style="font-weight:400;margin-top:14px;gap:8px;align-items:flex-start"><input type="checkbox" id="agree" style="width:auto;margin-top:4px"> <span class="small">I agree to the <a href="#/terms">Terms of use</a> and <a href="#/privacy">Privacy policy</a>. I will not enter student names or identifying information.</span></label>` : ''}
+          ${mode === 'signup' ? `<label class="row agree"><input type="checkbox" id="agree"> <span class="small">I agree to the <a href="#/terms">Terms of use</a> and <a href="#/privacy">Privacy policy</a>. I will not enter student names or identifying information.</span></label>` : ''}
           <p id="msg" class="err" role="alert"></p>
-          <button class="btn primary" style="width:100%;justify-content:center" type="submit">${mode === 'signup' ? 'Create account' : mode === 'forgot' ? 'Send reset link' : 'Sign in'}</button>
+          <button class="btn primary wide" type="submit">${mode === 'signup' ? 'Create account' : mode === 'forgot' ? 'Send reset link' : 'Sign in'}</button>
         </form>
-        <p class="small" style="margin-top:16px">${mode === 'signin' ? '<a href="#" data-m="forgot">Forgot your password?</a> · New here? <a href="#" data-m="signup">Create an account</a>' : 'Already have an account? <a href="#" data-m="signin">Sign in</a>'}</p>
-      </div></div>`;
-      $$('[data-m]').forEach(l => l.onclick = e => { e.preventDefault(); mode = l.dataset.m; render(); });
-      const g = $('#google');
+        <p class="small" style="margin:14px 0 0">${mode === 'signin' ? 'New here? <a href="#" data-m="signup">Create a free account</a> · <a href="#" data-m="forgot">Forgot password?</a>' : 'Already have an account? <a href="#" data-m="signin">Sign in</a>'}</p>`;
+      host.querySelectorAll('[data-m]').forEach(l => l.onclick = e => { e.preventDefault(); mode = l.dataset.m; render(); });
+      const g = $h('#google');
       if (g) g.onclick = async () => {
         store.set('diald-next', next);
         const { error } = await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: baseUrl() } });
-        if (error) $('#msg').textContent = error.message;
+        if (error) $h('#msg').textContent = error.message;
       };
-      $('#f').onsubmit = async e => {
+      $h('#f').onsubmit = async e => {
         e.preventDefault();
-        const msg = $('#msg'); msg.className = 'err'; msg.textContent = '';
-        const email = $('#email').value.trim(), pass = $('#pw') ? $('#pw').value : '';
+        const msg = $h('#msg'); msg.className = 'err'; msg.textContent = '';
+        const email = $h('#email').value.trim(), pass = $h('#pw') ? $h('#pw').value : '';
         if (!/^\S+@\S+\.\S+$/.test(email)) { msg.textContent = 'Enter a valid email.'; return; }
         if (mode !== 'forgot' && pass.length < 8) { msg.textContent = 'Use a password with at least 8 characters.'; return; }
-        if (mode === 'signup' && !$('#agree').checked) { msg.textContent = 'Please accept the terms to continue.'; return; }
-        const btn = main.querySelector('button[type=submit]'); btn.disabled = true;
+        if (mode === 'signup' && !$h('#agree').checked) { msg.textContent = 'Please accept the terms to continue.'; return; }
+        const btn = host.querySelector('button[type=submit]'); btn.disabled = true;
         let r;
         if (mode === 'signin') r = await sb.auth.signInWithPassword({ email, password: pass });
         else if (mode === 'signup') { store.set('diald-next', next); r = await sb.auth.signUp({ email, password: pass, options: { emailRedirectTo: baseUrl() } }); }
@@ -589,10 +714,18 @@
         if (r.error) { msg.textContent = r.error.message; return; }
         if (mode === 'signin') { toast('Welcome back.'); location.hash = '#/' + next; }
         else if (mode === 'signup' && r.data && r.data.session) { toast('Account created.'); location.hash = '#/' + next; }
-        else { msg.className = 'ok'; msg.textContent = mode === 'signup' ? 'Check your email to confirm your account. Then come back and sign in.' : 'If that email has an account, a reset link is on its way.'; }
+        else { msg.className = 'ok'; msg.textContent = mode === 'signup' ? 'Check your email to confirm your account, then sign in here.' : 'If that email has an account, a reset link is on its way.'; }
       };
     };
+    host._setMode = m => { if (m !== mode) { mode = m; render(); } };
     render();
+  }
+
+  // #/login shows the public landing page with the form open in the requested mode.
+  function loginPage(q) {
+    const next = q.get('next') || 'home';
+    if (user) { location.hash = '#/' + (next === 'home' ? '' : next); return; }
+    landing(next, q.get('mode') === 'signup' ? 'signup' : 'signin');
   }
 
   function resetPage() {
@@ -700,11 +833,11 @@
       await loadProfile();
       // Show "Continue with Google" only when Google is turned on in Supabase.
       fetch(C.supabaseUrl + '/auth/v1/settings', { headers: { apikey: C.supabaseKey } })
-        .then(r => r.json()).then(s => { googleEnabled = !!(s && s.external && s.external.google); if (googleEnabled && (parseHash().parts[0] || '') === 'login') route(); })
+        .then(r => r.json()).then(s => { googleEnabled = !!(s && s.external && s.external.google); if (googleEnabled && !user && ['', 'login'].includes(parseHash().parts[0] || '')) route(); })
         .catch(() => { googleEnabled = false; });
       if (fromAuth) {
         if (params.get('error_description')) toast(params.get('error_description'));
-        const next = store.get('diald-next') || 'plans'; store.del('diald-next');
+        const next = store.get('diald-next') || ''; store.del('diald-next');
         history.replaceState(null, '', location.pathname + '#/' + next);
       }
       sb.auth.onAuthStateChange((event, s) => {

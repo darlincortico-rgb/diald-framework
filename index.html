@@ -5,14 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DIALD Framework · From Data to Decision</title>
 <meta name="description" content="DIALD helps teachers turn multilingual learners' language proficiency levels into instructional decisions, with a library of intervention pathways. No student names are stored.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231d5557'/%3E%3Ctext x='16' y='22' font-family='Arial' font-weight='700' font-size='16' text-anchor='middle' fill='white'%3ED%3C/text%3E%3Ccircle cx='25' cy='21' r='2.5' fill='%23b7c791'/%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="diald-favicon.svg">
+<link rel="apple-touch-icon" href="diald-logo.png">
+<meta name="theme-color" content="#1B3A5C">
+<link rel="preload" href="diald-fraunces-700.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="diald-site.css">
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="top">
   <div class="top-in">
-    <a class="brand" href="#/">DIALD<span>•</span></a>
+    <a class="brand" href="#/" aria-label="DIALD Framework home"><svg class="logo" aria-hidden="true" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><path d="M140.9 83.9 A58 58 0 1 1 104.1 60.9" fill="none" stroke="#2A9488" stroke-width="17" stroke-linecap="round"/><path d="M46.5 147.7 L 32 190 L 73.0 169.9 Z" fill="#2A9488" stroke="#2A9488" stroke-width="7" stroke-linejoin="round"/><circle cx="80" cy="98" r="18" fill="#1B3A5C"/><path d="M 50 142 C 84 136, 112 112, 124 62 C 126 54, 136 54, 136 63 C 138 118, 116 150, 82 162 C 66 167, 46 154, 50 142 Z" fill="#1B3A5C"/><rect x="128" y="8" width="46" height="28" rx="9" fill="#E3A93B"/><path d="M 136 34 L 131 47 L 146 34 Z" fill="#E3A93B" stroke="#E3A93B" stroke-width="2" stroke-linejoin="round"/><circle cx="140.0" cy="22.0" r="3.3" fill="#fff"/><circle cx="151.0" cy="22.0" r="3.3" fill="#fff"/><circle cx="162.0" cy="22.0" r="3.3" fill="#fff"/></svg><span class="word">DIALD</span></a>
     <button class="menu-btn" id="menu-btn" aria-expanded="false" aria-controls="nav">Menu</button>
     <nav class="nav" id="nav" aria-label="Main">
       <a href="#/" data-nav="home">Home</a>
@@ -27,8 +30,9 @@
 <main id="main" tabindex="-1"></main>
 <footer class="foot">
   <div class="foot-in">
-    <div>© <span id="yr"></span> Darlin Cortico Rosario · DIALD Framework · An emerging framework under continued development.<br>DIALD does not store student names or identifiers. Recommendations are for educator review, not diagnoses.</div>
-    <div><a href="#/privacy">Privacy</a> · <a href="#/terms">Terms of use</a> · <a href="classroom.html">Earlier classroom prototype</a></div>
+    <div class="foot-brand"><a class="brand light" href="#/" aria-label="DIALD Framework home"><svg class="logo" aria-hidden="true" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><path d="M140.9 83.9 A58 58 0 1 1 104.1 60.9" fill="none" stroke="#2A9488" stroke-width="17" stroke-linecap="round"/><path d="M46.5 147.7 L 32 190 L 73.0 169.9 Z" fill="#2A9488" stroke="#2A9488" stroke-width="7" stroke-linejoin="round"/><circle cx="80" cy="98" r="18" fill="#fff"/><path d="M 50 142 C 84 136, 112 112, 124 62 C 126 54, 136 54, 136 63 C 138 118, 116 150, 82 162 C 66 167, 46 154, 50 142 Z" fill="#fff"/><rect x="128" y="8" width="46" height="28" rx="9" fill="#E3A93B"/><path d="M 136 34 L 131 47 L 146 34 Z" fill="#E3A93B" stroke="#E3A93B" stroke-width="2" stroke-linejoin="round"/><circle cx="140.0" cy="22.0" r="3.3" fill="#1B3A5C"/><circle cx="151.0" cy="22.0" r="3.3" fill="#1B3A5C"/><circle cx="162.0" cy="22.0" r="3.3" fill="#1B3A5C"/></svg><span class="word">DIALD</span></a><p>From data to decision.</p></div>
+    <div class="foot-text">© <span id="yr"></span> Darlin Cortico Rosario · DIALD Framework · An emerging framework under continued development.<br>DIALD does not store student names or identifiers. Recommendations are for educator review, not diagnoses.</div>
+    <div class="foot-links"><a href="#/privacy">Privacy</a><a href="#/terms">Terms of use</a><a href="classroom.html">Earlier classroom prototype</a></div>
   </div>
 </footer>
 <script src="diald-config.js"></script>
