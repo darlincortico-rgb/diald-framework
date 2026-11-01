@@ -12,7 +12,7 @@ window.DIALD_CONFIG = {
   // Feedback bubble: the Formspree form ID (the part after formspree.io/f/). Empty = bubble hidden.
   // Feedback bubble. Easiest: paste the Google Form's share link here (forms.gle/... or docs.google.com/forms/d/e/.../viewform).
   // "Explain with AI": the Cloudflare Worker address (https://....workers.dev). Empty = button hidden.
-  aiUrl: '',
+  aiUrl: 'https://diald-ai.darlin-cortico.workers.dev',
   feedbackFormLink: 'https://docs.google.com/forms/d/e/1FAIpQLSccLZ_Z4_INt8Iufp0QTEe8QlG7pDyboii8mQSpaEqtilyprQ/viewform',
   // Other options (used only when feedbackFormLink is empty): a Formspree form ID ...
   feedbackFormId: '',
