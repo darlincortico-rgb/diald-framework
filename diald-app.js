@@ -24,7 +24,7 @@
   }
   const quadChip = id => `<span class="chip q">${esc(id)} · ${esc(E.QUADRANTS[id].name)}</span>`;
   const domainChips = ds => ds.map(d => `<span class="chip">${cap(d)}</span>`).join('');
-  const statusChip = s => s === 'concern' ? '<span class="chip bad">Concern</span>' : s === 'no-concern' ? '<span class="chip good">No current concern</span>' : '<span class="chip na">Insufficient evidence</span>';
+  const statusChip = s => s === 'concern' ? '<span class="chip bad">Concern</span>' : s === 'no-concern' ? '<span class="chip good">No current concern</span>' : s === 'watch' ? '<span class="chip watch">Watch</span>' : '<span class="chip na">Insufficient evidence</span>';
   const sampleChip = x => x.status === 'sample' ? '<span class="chip sample">Sample content</span>' : '';
 
   /* ---------- Supabase ---------- */
@@ -71,7 +71,7 @@
     const { parts, q } = parseHash();
     const p = parts[0] || '';
     // A signed-in teacher completes the profile form before using the workspace.
-    if (user && profileLoaded && !profile && !['profile', 'privacy', 'terms', 'reset', 'login'].includes(p)) {
+    if (user && profileLoaded && !profile && !['profile', 'privacy', 'terms', 'reset', 'login', 'help'].includes(p)) {
       const here = location.hash.replace(/^#\/?/, '') || 'plans';
       location.hash = '#/profile?next=' + encodeURIComponent(here);
       return;
@@ -79,12 +79,12 @@
     if (p === 'home') { location.hash = '#/'; return; }
     document.body.classList.toggle('public', !user);
     // Everything except the landing, account and policy pages needs a free account.
-    if (sb && !user && !['', 'login', 'reset', 'privacy', 'terms'].includes(p)) {
+    if (sb && !user && !['', 'login', 'reset', 'privacy', 'terms', 'help'].includes(p)) {
       const here = location.hash.replace(/^#\/?/, '');
       location.hash = '#/login?next=' + encodeURIComponent(here);
       return;
     }
-    const map = { '': 'home', analyze: 'analyze', plan: 'plans', library: 'library', pathway: 'library', activity: 'library', plans: 'plans' };
+    const map = { '': 'home', analyze: 'analyze', plan: 'plans', library: 'library', pathway: 'library', activity: 'library', plans: 'plans', help: 'help' };
     setNav(map[p] || '');
     if (p === 'profile') profilePage(q);
     else if (p === '') home();
@@ -98,6 +98,7 @@
     else if (p === 'reset') resetPage();
     else if (p === 'privacy') privacyPage();
     else if (p === 'terms') termsPage();
+    else if (p === 'help' && window.DIALDHelp) window.DIALDHelp.page(main);
     else notFound();
     window.scrollTo(0, 0);
   }
@@ -136,7 +137,7 @@
   /* ---------- HOME ---------- */
   const CYCLE = [
     ['Profile', 'Enter each year’s Listening, Speaking, Reading, and Writing levels. Levels only — never names.'],
-    ['Pattern Indicator', 'See the learner’s quadrant, whether oral language and literacy move apart, and a provisional LTEL trajectory risk.'],
+    ['Pattern Indicator', 'See the learner’s quadrant, whether oral language and literacy move apart, and and a provisional trajectory signal.'],
     ['Instructional Focus', 'Get lesson-plan pathways from the DIALD Library that match the learner’s priorities.'],
     ['Response', 'At the review point, record progress. DIALD reads it as Positive, Partial, or Limited.'],
     ['Adaptation', 'Keep, adjust, intensify, or change the support. New evidence returns to the Profile.']
@@ -244,6 +245,7 @@
         A = { planId: null, planNumber: null, inputs: st.inputs, ran: true, stage: 1, selected: [], progress: [], dirty: true, localName: st.name };
         persistA(); location.hash = '#/analyze?keep=1';
       },
+      afterRender: () => { if (user && profile && window.DIALDHelp) window.DIALDHelp.maybeTour(); },
       afterEmpty: async () => {
         if (!sb) return;
         const { count } = await sb.from('plans').select('id', { count: 'exact', head: true });
@@ -483,6 +485,12 @@
         <div class="card"><h3>Reference level</h3>
           <p class="small">Oral (Listening + Speaking) or Literacy (Reading + Writing) counts as <b>High</b> when both domains are at or above this level. This is a provisional criterion; adjust it to your assessment.</p>
           <label for="high">High = level</label><select id="high">${Array.from({ length: C.maxLevel - 1 }, (_, i) => `<option ${I.highLevel === i + 2 ? 'selected' : ''} value="${i + 2}">${i + 2} or above</option>`).join('')}</select>
+          <div class="fields" style="margin-top:12px">
+            <div style="grid-column:1/-1"><label for="st-rules">State rules</label><select id="st-rules">${window.DIALDStates.STATES.map(s => `<option value="${s.code}" ${stateOf(I) === s.code ? 'selected' : ''}>${s.name}</option>`).join('')}<option value="" ${stateOf(I) ? '' : 'selected'}>Other state (general rule)</option></select></div>
+            <div><label for="horizon">LTEL horizon</label><select id="horizon">${[5, 6, 7].map(v => `<option value="${v}" ${(Number(I.horizon) || 6) === v ? 'selected' : ''}>${v} years</option>`).join('')}</select></div>
+            <div><label for="exitlv">Exit check</label><select id="exitlv">${[3, 4, 5].map(v => `<option value="${v}" ${(Number(I.exitLevel) || 4) === v ? 'selected' : ''}>All domains ${v}+</option>`).join('')}</select></div>
+          </div>
+          <p class="small" style="margin-bottom:0">Provisional parameters for the trajectory signal. Use your state's definitions.</p>
         </div>
         <div class="card"><h3>How DIALD reads the data</h3><p class="small">Levels are ordinal categories. DIALD does not average or subtract them. It compares domains, follows them across years, and combines them with academic and instructional evidence. Unchanged levels do not always mean no growth inside a band.</p></div>
       </div></div>`;
@@ -499,6 +507,8 @@
     };
     main.querySelectorAll('#stage select, #stage input').forEach(el => el.addEventListener('change', () => { readProfile(); A.dirty = true; persistA(); renderSaveBar(result()); }));
   }
+  // State rules: the plan's own choice, else the teacher's profile state.
+  function stateOf(I) { return I.state != null ? I.state : window.DIALDStates.codeFor(profile && profile.state); }
   function opt(pairs, cur) { return pairs.map(([v, t]) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${t}</option>`).join(''); }
 
   function readProfile() {
@@ -510,21 +520,50 @@
     I.academic = { status: $('#ac-status').value, trend: $('#ac-trend').value };
     I.priorResponse = $('#prior').value;
     I.highLevel = Number($('#high').value);
+    I.horizon = Number($('#horizon').value); I.exitLevel = Number($('#exitlv').value);
+    I.state = $('#st-rules').value;
     // drop empty rows at the end only when analysing
     I.periods = I.periods.filter((p, i) => i < 1 || DOMAINS.some(d => p[d]) || i < I.periods.length);
   }
 
+  function stateCard(st) {
+    if (!st) return '';
+    if (!st.code) return `<div class="card"><h3>Rules used: general</h3><p class="small">No state was chosen, so DIALD used its general rule: any growth counts, exit when all four domains reach the exit level, LTEL time of ${st.ltel.years} years. Choose your state in your profile or in Reference level.</p></div>`;
+    const tag = x => x === 'verified' ? '<span class="chip good">Verified</span>' : '<span class="chip">To confirm</span>';
+    return `<div class="card"><h3>Rules used: ${esc(st.name)}</h3>
+      <dl class="rules">
+        <dt>Language test</dt><dd>${esc(st.elp.test)}. ${esc(st.elp.growthText)}</dd>
+        <dt>Exit criteria</dt><dd>${esc(st.exit.text)} ${tag(st.exit.status)}</dd>
+        <dt>LTEL</dt><dd>${esc(st.ltel.text)} ${tag(st.ltel.status)}</dd>
+        <dt>State ELA test</dt><dd>${esc(st.academic.test)}: ${st.academic.levels.map((l, i) => esc(l) + (i + 1 >= st.academic.meets ? ' ✓' : '')).join(' · ')}</dd>
+      </dl>
+      <p class="small">Checked ${esc(st.checked)}. Sources: ${st.sources.map(([t, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(t)}</a>`).join(' · ')}</p></div>`;
+  }
   function patternStage(res) {
     const r = res.risk;
     $('#stage').innerHTML = `<div class="split">
       <div class="stack">
         <div class="card">
           <div class="eyebrow">02 · Pattern Indicator</div>
-          <h2>Provisional LTEL trajectory risk</h2>
-          <div class="row" style="margin:6px 0 10px"><span class="badge ${r.level}">${r.level === 'Inconclusive' ? 'Inconclusive' : r.level + ' risk'}</span>${res.quadrant ? quadChip(res.quadrant.id) : ''}</div>
+          <h2>Trajectory signal</h2>
+          <div class="row" style="margin:6px 0 10px"><span class="badge ${r.level}">${esc(r.label)}</span>${res.quadrant ? quadChip(res.quadrant.id) : ''}${r.flags.years !== null ? `<span class="chip">${r.flags.years} years in services · horizon ${r.flags.horizon}</span>` : ''}</div>
           <p>${esc(r.text)}</p>
-          <p class="small">Risk here is theoretical, not statistical: it reflects patterns described among students classified as LTELs, not a probability. Review the learner’s context before acting. DIALD does not assign MTSS tiers or referrals.</p>
+          ${r.evidence.length ? `<ul class="evidence">${r.evidence.map(e => `<li>${esc(e)}</li>`).join('')}</ul>` : ''}
+          ${r.flags.mayExit ? `<div class="flag ok">${r.flags.exitState ? 'The latest results meet the ' + esc(r.flags.exitState) + ' exit criteria (' + esc(r.flags.exitText) + ')' : 'All four domains are at level ' + r.flags.exitLevel + ' or above'}. The learner may meet exit criteria: check the reclassification procedure before planning more intervention.</div>` : ''}
+          ${r.flags.exitUnknown ? `<div class="flag">To check the ${esc(r.flags.exitState)} exit criteria, DIALD needs ${esc(r.flags.exitNeeds)}.</div>` : ''}
+          ${r.flags.pastHorizon ? `<div class="flag">The learner has reached the ${r.flags.horizon}-year LTEL time criterion. Focus on the current need below.</div>` : ''}
+          ${r.flags.accessRescale ? `<div class="flag">ACCESS 2025–26 restarted its scale scores. DIALD did not compare this year's scale scores with earlier years.</div>` : ''}
+          ${r.model === 'CT' ? `<div class="flag ok">Expected growth = Connecticut LAS Links growth targets for the Oral and Literacy composites, by grade and level (CSDE growth model, 2017). Levels 4–5 only need to stay at 4 or above. Confirm the targets your district uses for the current LAS Links form.</div>` : ''}
+          ${r.flags.ctSkipped ? `<div class="flag">Connecticut growth targets were not applied: they need all four scale scores and the grade for each year. DIALD used levels and any scale-score growth instead.</div>` : ''}
+          <p class="small">${r.model === 'CT' ? 'Provisional and transparent: a composite is flagged when it grows less than ' + r.flags.growth.ptaFlag + '% of its Connecticut target (or drops below level 4); two years in a row make the signal persistent. The state targets are ambitious by design, so missing a target alone is not a flag.' : `Provisional and transparent: a domain is flagged when it is below level ${res.high} and did not grow; two intervals in a row make the signal persistent.`} These parameters are being validated. This is not a probability or a diagnosis. If the learner has an IEP, review language and learning needs together with your MTSS team.</p>
         </div>
+        <div class="card">
+          <h3>Converging evidence</h3>
+          <p class="small" style="margin-top:0">DIALD reads four kinds of evidence side by side. It counts concerns; it does not weight them, because the combination is still being validated.</p>
+          <div class="dims">${res.criteria.map(c => `<div class="dim"><h3>${esc(c.label)}${statusChip(c.status)}</h3><p>${esc(c.text)}</p></div>`).join('')}</div>
+          <p class="small"><b>${res.criteriaConcerns} of ${res.criteriaAvailable}</b> available criteria show a concern.</p>
+        </div>
+        ${stateCard(res.state)}
         <div class="card">
           <h3>Interpretation matrix</h3>
           <div class="dims">${Object.entries(res.dims).map(([k, d]) => `<div class="dim"><h3>${esc(E.DIM_LABEL[k])}${statusChip(d.status)}</h3><p>${esc(d.text)}</p></div>`).join('')}</div>
@@ -625,7 +664,7 @@
         ${c.level === 'Partial' ? `<p class="small"><b>Activities to add from this pathway:</b> ${p.phases.flatMap(ph => ph.activities).filter((v, i, a) => a.indexOf(v) === i).map(aid => `<a href="#/activity/${aid}?level=${levelFor(res, act(aid))}">${esc(act(aid).name)}</a>`).join(' · ')}</p>` : ''}
         ${c.level === 'Limited' ? `<p class="small"><b>Alternative pathways:</b> ${others.length ? others.map(o => `<a href="#/pathway/${o.id}">${esc(o.title)}</a>`).join(' · ') : 'none for this profile yet — <a href="#/library">browse the library</a>'}</p>` : ''}
       </div>`; }).join('')}
-      <div class="card"><h3>Back to the Profile</h3><p>When the next assessment results arrive, add them as a new year. DIALD will reassess the pattern and the provisional risk.</p>
+      <div class="card"><h3>Back to the Profile</h3><p>When the next assessment results arrive, add them as a new year. DIALD will reassess the pattern and the trajectory signal.</p>
         <button class="btn" id="next-cycle">+ Add next year’s levels</button></div>`;
     $('#next-cycle').onclick = () => { A.inputs.periods.push(blankPeriod(A.inputs.periods.length + 1)); A.stage = 0; A.dirty = true; persistA(); renderAnalyze(); };
   }
@@ -671,10 +710,13 @@
     const lab = v => (window.DIALDRoster ? window.DIALDRoster.cleanLabel(v || '') : String(v || '').slice(0, 24)) || 'Year';
     return {
       grade: I.grade || '', years: I.years === '' || I.years == null ? '' : n(Number(I.years)), highLevel: n(I.highLevel) || 3,
+      horizon: n(Number(I.horizon)) || 6, exitLevel: n(Number(I.exitLevel)) || 4, state: /^[A-Z]{2}$/.test(I.state || '') ? I.state : '', test: lab(I.test || '').replace(/^Year$/, ''),
       periods: (I.periods || []).map(p => {
         const o = { label: lab(p.label) }; DOMAINS.forEach(d => { o[d] = n(p[d]); });
         if (p.scale) { o.scale = {}; DOMAINS.forEach(d => { if (n(p.scale[d])) o.scale[d] = p.scale[d]; }); }
         if (n(p.overall)) o.overall = p.overall;
+        if (/^(K|[0-9]{1,2})$/.test(String(p.grade || ''))) o.grade = String(p.grade);
+        ['literacy', 'ela', 'bench'].forEach(k => { if (n(p[k])) o[k] = p[k]; });
         return o;
       }),
       academic: { status: (I.academic && I.academic.status) || 'unknown', trend: (I.academic && I.academic.trend) || 'unknown' },
@@ -721,11 +763,11 @@
     main.innerHTML = `<div class="page">
       <div class="row" style="justify-content:space-between"><div><div class="eyebrow">Your workspace</div><h1>My plans</h1></div><a class="btn primary" href="#/analyze?new=1">+ New analysis</a></div>
       ${error ? `<div class="card"><p class="err">Could not load plans: ${esc(error.message)}</p></div>` : ''}
-      <div class="card">${rows.length ? `<table class="tbl"><thead><tr><th>Plan</th><th>Quadrant</th><th>Risk</th><th>Pathways</th><th>Response</th><th>Updated</th><th></th></tr></thead><tbody>
+      <div class="card">${rows.length ? `<table class="tbl"><thead><tr><th>Plan</th><th>Quadrant</th><th>Signal</th><th>Pathways</th><th>Response</th><th>Updated</th><th></th></tr></thead><tbody>
         ${rows.map(r => { const resp = (r.progress || []).map(e => E.classifyResponse(e).level); return `<tr>
           <td class="plan-name"><a href="#/plan/${r.id}"><b>${esc(planTitle(r))}</b></a>${localNames[r.id] ? `<span class="local-name">${esc(localNames[r.id])}</span>` : ''} <button class="icon-btn" data-ren="${r.id}" data-t="${esc(r.title || '')}" data-n="${r.plan_number}" title="Rename" aria-label="Rename ${esc(planTitle(r))}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></svg></button></td>
           <td>${r.result && r.result.quadrant ? esc(r.result.quadrant) : '—'}</td>
-          <td>${r.result ? `<span class="badge ${esc(r.result.risk)}" style="font-size:12px;padding:3px 8px">${esc(r.result.risk)}</span>` : '—'}</td>
+          <td>${r.result ? `<span class="badge ${esc(r.result.risk)}" style="font-size:12px;padding:3px 8px">${esc(E.SIGNALS[r.result.risk] || r.result.risk)}</span>` : '—'}</td>
           <td>${(r.pathway_ids || []).map(id => pw(id) ? esc(pw(id).title) : '').filter(Boolean).join('<br>') || '—'}</td>
           <td>${resp.length ? resp.map(x => `<span class="badge ${x}" style="font-size:12px;padding:3px 8px">${x}</span>`).join(' ') : '—'}</td>
           <td class="small">${new Date(r.updated_at).toLocaleDateString()}</td>
@@ -986,11 +1028,11 @@
   function privacyPage() {
     main.innerHTML = `<div class="page prose"><div class="eyebrow">Last updated October 2026</div><h1>Privacy policy</h1>
       <p class="lead">DIALD is built so that teachers can use it without sharing any student information.</p>
-      <h2>What we store</h2><ul><li>Your email address and password (managed securely by our authentication provider), or your Google sign-in.</li><li>Your teacher profile: your name, school district, state, the grades you teach, and your role.</li><li>Plans you choose to save: proficiency levels and scale scores, test year labels, grade band, years of services, general academic and response categories, the pathways you selected, and progress numbers.</li></ul>
+      <h2>What we store</h2><ul><li>Your email address and password (managed securely by our authentication provider), or your Google sign-in.</li><li>Your teacher profile: your name, school district, state, the grades you teach, and your role.</li><li>Plans you choose to save: proficiency levels and scale scores, test year labels, grade band and grade for each year, years of services, general academic and response categories, the pathways you selected, and progress numbers.</li></ul>
       <h2>What we do not store</h2><ul><li>Student names, IDs, dates of birth, schools, or any other information that identifies a student.</li><li>Free-text notes about students. The tool has no free-text fields for student information.</li></ul>
       <p>Please do not enter identifying information anywhere on this site.</p>
       <h2>Files you analyze</h2><p>When you use <b>Analyze my file</b>, your file is read <b>inside your browser, on your computer</b>. It is not uploaded, and student names and IDs are never sent to our servers. If you choose “Keep this file on this computer,” it is kept in your browser’s storage until you clear it. Otherwise it is forgotten when you close the tab.</p>
-      <p>If you save a plan for a student from your file, only the allowed fields are saved: levels, scale scores, test year labels, grade band, years of services, results, chosen pathways, and progress numbers. The student’s name stays on your computer, linked to the plan, so you can recognize it. Our database also rejects any field that is not on this list.</p>
+      <p>If you save a plan for a student from your file, only the allowed fields are saved: levels, scale scores, test year labels, grade band and grade for each year, years of services, results, chosen pathways, and progress numbers. The student’s name stays on your computer, linked to the plan, so you can recognize it. Our database also rejects any field that is not on this list.</p>
       <h2>How we use data</h2><p>To run the site: to let you sign in, save, and reopen your plans. Your teacher profile also helps the author understand where and how DIALD is used (for example, how many teachers use it by state, grade, or role). Results are reported only in summary form, never by name. We do not sell, rent, or share your data, and we do not use it for advertising.</p>
       <h2>Who can see your plans</h2><p>Only you. Database rules allow each account to read and change its own plans only.</p>
       <h2>Where data is stored</h2><p>On servers in the United States operated by our database provider (Supabase).</p>
@@ -1026,6 +1068,7 @@
       }
       sb.auth.onAuthStateChange((event, s) => {
         const was = !!user; user = s ? s.user : null; renderAcct();
+        if (window.DIALDHelp) window.DIALDHelp.setUser(user);
         if (event === 'PASSWORD_RECOVERY') { location.hash = '#/reset'; return; }
         if (was !== !!user) {
           // Supabase advises not awaiting inside this callback; load the profile afterwards.
@@ -1038,6 +1081,7 @@
       });
     }
     renderAcct(); route();
+    if (window.DIALDHelp) { window.DIALDHelp.setUser(user); window.DIALDHelp.mountFeedback(); }
   }
   start();
 })();

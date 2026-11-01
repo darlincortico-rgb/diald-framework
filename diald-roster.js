@@ -8,7 +8,9 @@
   const D1 = { listening: 'L', speaking: 'S', reading: 'R', writing: 'W' };
   const DNAME = { listening: 'Listening', speaking: 'Speaking', reading: 'Reading', writing: 'Writing' };
   const QCOLOR = { Q1: '#2A9488', Q2: '#1B3A5C', Q3: '#E3A93B', Q4: '#5FB3A8' };
-  const RISK_ORDER = { High: 0, Moderate: 1, Inconclusive: 2, Low: 3 };
+  const SIG_ORDER = { Horizon: 0, Persistent: 1, Emerging: 2, NA: 3, None: 4 };
+  const SIG_COLOR = { Horizon: '#7a2a22', Persistent: '#a83c32', Emerging: '#E3A93B', None: '#2A9488', NA: '#9fb0c0' };
+  const sigLabel = k => E.SIGNALS[k] || k;
   const KEY = 'diald-roster', MAPKEY = 'diald-roster-maps', PLANNAMES = 'diald-plan-names';
 
   /* ---------- local storage (this computer only) ---------- */
@@ -56,7 +58,10 @@
     FIELDS.push({ k: d + 'Scale', label: DNAME[d] + ' scale score (optional)',
       test: h => h.includes(DP[d]) && /scale|ss$|ssc/.test(h) && !/raw/.test(h) });
   });
-  FIELDS.push({ k: 'overall', label: 'Overall level (optional)', test: h => /overall|composite/.test(h) && /prof|level|pl$/.test(h) && !/scale/.test(h) });
+  FIELDS.push({ k: 'literacy', label: 'Literacy composite level (optional)', test: h => /literacy/.test(h) && /prof|level|pl$|composite/.test(h) && !/scale/.test(h) });
+  FIELDS.push({ k: 'overall', label: 'Overall level (optional)', test: h => /overall|composite/.test(h) && /prof|level|pl$/.test(h) && !/scale|literacy|oral|comprehension/.test(h) });
+  FIELDS.push({ k: 'ela', label: 'State ELA test level (optional)', test: h => (/^ela|sba|smarterbalanced|caaspp|mcas|nysela|stateela|statetest|staar/.test(h)) && !/scale|ss$|score$|lexile|benchmark/.test(h) });
+  FIELDS.push({ k: 'bench', label: 'Benchmark result (optional)', test: h => /benchmark|iready|nwea|mapgrowth|mapreading|starreading|^star|fastbridge|dibels|aimsweb|acadience|percentile/.test(h) && !/scale|rit$|lexile/.test(h) });
 
   function detect(headers) {
     const used = new Set(), map = {};
@@ -72,7 +77,7 @@
   const signature = headers => headers.map(norm).join('|');
 
   /* ---------- value parsing ---------- */
-  const LEVEL_WORDS = [['above proficient', 5], ['early intermediate', 2], ['entering', 1], ['emerging', 2], ['developing', 3], ['expanding', 4], ['bridging', 5], ['reaching', 6], ['beginning', 1], ['intermediate', 3], ['proficient', 4]];
+  const LEVEL_WORDS = [['commanding', 5], ['transitioning', 3], ['minimally developed', 1], ['somewhat developed', 2], ['moderately developed', 3], ['well developed', 4], ['above proficient', 5], ['early intermediate', 2], ['entering', 1], ['emerging', 2], ['developing', 3], ['expanding', 4], ['bridging', 5], ['reaching', 6], ['beginning', 1], ['intermediate', 3], ['proficient', 4]];
   function level(v) {
     if (v === '' || v == null) return null;
     if (typeof v === 'number') return v >= 1 && v <= 6 ? Math.round(v * 10) / 10 : null;
@@ -81,6 +86,33 @@
     if (m) { const n = Number(m[1]); return n >= 1 && n <= 6 ? n : null; }
     const w = LEVEL_WORDS.find(([k]) => s.includes(k));
     return w ? w[1] : null;
+  }
+  // State ELA test: performance level 1–4 (number or words such as "Met" or "Partially Meeting").
+  function elaLevel(v) {
+    if (v === '' || v == null) return null;
+    const s = String(v).toLowerCase().trim(), m = s.match(/^\D*(\d)(\.0)?\D*$/);
+    if (m) { const n = Number(m[1]); return n >= 1 && n <= 4 ? n : null; }
+    if (/not met|did not|does not|not meeting|below basic|unsatisf/.test(s)) return 1;
+    if (/nearly|approach|partial/.test(s)) return 2;
+    if (/exceed|advanced|above|distinguished|mastered|masters/.test(s)) return 4;
+    if (/met|meet|proficient/.test(s)) return 3;
+    return null;
+  }
+  // Benchmark: 1 well below · 2 below · 3 at · 4 above. Numbers 5–100 are read as percentiles (provisional bands).
+  function benchCat(v) {
+    if (v === '' || v == null) return null;
+    const s = String(v).toLowerCase().trim();
+    const m = s.match(/^\D*(\d+(\.\d+)?)\s*(st|nd|rd|th|%)?\D*$/);
+    if (m && !/tier/.test(s)) { const n = Number(m[1]); if (n >= 1 && n <= 4 && !/%|th|st|nd|rd/.test(s)) return Math.round(n); if (n > 0 && n <= 100) return n <= 10 ? 1 : n <= 25 ? 2 : n <= 75 ? 3 : 4; return null; }
+    // Common report labels: DIBELS/Acadience (Well below · Below · At · Above benchmark), i-Ready placement
+    // (grade levels below / on / above), Star (Urgent intervention · Intervention · On watch · At/Above),
+    // FastBridge (High · Some · Low risk), MAP Growth quintiles (Low · LoAvg · Avg · HiAvg · High).
+    if (/well below|far below|urgent|tier 3|high risk|intensive|two grade|2 grade|three or more|3 or more|two or more/.test(s)) return 1;
+    if (/below|approach|tier 2|some risk|at risk|strategic|one grade|1 grade|on watch|intervention|^low$|lo ?avg|low average/.test(s)) return 2;
+    if (/at\s*\/\s*above|at or above|mid or above|hi ?avg|high average/.test(s)) return 3;
+    if (/above|exceed|advanced|^high$/.test(s)) return 4;
+    if (/^at\b|at benchmark|on grade|on track|meet|tier 1|proficient|core|low risk|^avg$|^average$/.test(s)) return 3;
+    return null;
   }
   function num(v) { if (v === '' || v == null) return null; const n = Number(String(v).replace(/[^0-9.]/g, '')); return Number.isFinite(n) && n > 0 ? n : null; }
   function yearOf(v, rowIndex) {
@@ -189,6 +221,10 @@
       const scale = {}; DOMAINS.forEach(d => { const v = num(get(r, d + 'Scale')); if (v) scale[d] = v; });
       if (Object.keys(scale).length) p.scale = scale;
       const ov = level(get(r, 'overall')); if (ov) p.overall = ov;
+      const pg = gradeOf(get(r, 'grade')); if (pg) p.grade = pg;
+      const lit = level(get(r, 'literacy')); if (lit) p.literacy = lit;
+      const ela = elaLevel(get(r, 'ela')); if (ela) p.ela = ela;
+      const bc = benchCat(get(r, 'bench')); if (bc) p.bench = bc;
       if (!byKey.has(key)) byKey.set(key, { key, name: name || (id ? 'ID ' + id : 'Student ' + (byKey.size + 1)), grade: '', group: '', years: '', test: '', periods: [] });
       const s = byKey.get(key);
       const g = gradeOf(get(r, 'grade')); if (g) s.grade = g;
@@ -207,17 +243,19 @@
   }
 
   function analyzeStudent(s, high) {
-    return E.analyze({ highLevel: high, years: s.years, grade: band(s.grade), periods: s.periods, academic: { status: 'unknown', trend: 'unknown' }, priorResponse: 'none' });
+    return E.analyze({ highLevel: high, horizon: (data && data.horizon) || 6, state: (data && data.state) || '', test: s.test, years: s.years, grade: band(s.grade), periods: s.periods, academic: { status: 'unknown', trend: 'unknown' }, priorResponse: 'none' });
   }
   // Inputs for the analysis screen and for saved plans: only the allowed fields.
   function planInputs(s, high) {
     return {
-      grade: band(s.grade), years: s.years === '' ? '' : s.years, highLevel: high,
+      grade: band(s.grade), years: s.years === '' ? '' : s.years, highLevel: high, horizon: (data && data.horizon) || 6, state: (data && data.state) || '', test: cleanLabel(s.test || ''),
       periods: s.periods.map(p => {
         const o = { label: cleanLabel(p.label) || 'Year' };
         DOMAINS.forEach(d => { o[d] = p[d]; });
         if (p.scale) { o.scale = {}; DOMAINS.forEach(d => { if (p.scale[d]) o.scale[d] = p.scale[d]; }); }
         if (p.overall) o.overall = p.overall;
+        if (p.grade) o.grade = p.grade;
+        ['literacy', 'ela', 'bench'].forEach(k => { if (p[k]) o[k] = p[k]; });
         return o;
       }),
       academic: { status: 'unknown', trend: 'unknown' }, priorResponse: 'none'
@@ -235,20 +273,31 @@
     [[2, 2, 2, 1], [3, 3, 3, 2], [3, 3, 4, 3]]
   ];
   function sampleRaw() {
-    const headers = ['Student Name', 'Student ID', 'School Year', 'Test', 'Grade', 'Group', 'Years in ELD', 'Listening PL', 'Speaking PL', 'Reading PL', 'Writing PL', 'Listening Scale Score', 'Speaking Scale Score', 'Reading Scale Score', 'Writing Scale Score'];
+    const headers = ['Student Name', 'Student ID', 'School Year', 'Test', 'Grade', 'Group', 'Years in ELD', 'Listening PL', 'Speaking PL', 'Reading PL', 'Writing PL', 'Listening Scale Score', 'Speaking Scale Score', 'Reading Scale Score', 'Writing Scale Score', 'Overall PL', 'SBA ELA Level', 'Reading Benchmark (spring)'];
+    const BW = ['Well Below', 'Below', 'At Benchmark', 'Above'];
     const body = [];
     SAMPLE_NAMES.forEach((n, i) => {
       const pat = SAMPLE_PATTERNS[i], grade = 6 + (i % 3);
       pat.forEach((lv, y) => {
-        const ss = lv.map((l, k) => 380 + l * 45 + ((i * 7 + y * 11 + k * 5) % 30));
-        body.push([n, 'S' + (1001 + i), (2023 + y) + '-' + String(24 + y).slice(-2), 'LAS Links', grade - 2 + y, 'Period ' + (1 + (i % 3)), 3 + y + (i % 3), ...lv, ...ss]);
+        // Scale scores placed inside the Connecticut LAS Links composite ranges for that grade and level.
+        const g = String(grade - 2 + y), CTt = E.CT;
+        const ss = lv.map((l, k) => {
+          const cut = CTt[k < 2 ? 'oral' : 'literacy'].cuts[g];
+          const frac = Math.max(0.05, Math.min(0.95, 0.35 + ((i * 7 + k * 5) % 5) / 10 + (i % 4 === 0 ? 0.15 : -0.12) * y));
+          return Math.round(cut[l - 1] + frac * (cut[l] - cut[l - 1]));
+        }); // some grow inside the band, some do not
+        const overall = Math.max(1, Math.min(5, Math.floor((lv[0] + lv[1] + lv[2] + lv[3]) / 4 + 0.25)));
+        const lit = Math.min(lv[2], lv[3]);
+        const ela = Math.max(1, Math.min(4, lit - 1 + ((i + y) % 3 === 0 ? 1 : 0)));
+        const bench = Math.max(1, Math.min(4, lit - 1 + ((i * 3 + y) % 4 === 0 ? 1 : 0)));
+        body.push([n, 'S' + (1001 + i), (2023 + y) + '-' + String(24 + y).slice(-2), 'LAS Links', grade - 2 + y, 'Period ' + (1 + (i % 3)), 3 + y + (i % 3), ...lv, ...ss, overall, ela, BW[bench - 1]]);
       });
     });
     return { fileName: 'DIALD sample class (fictional).xlsx', headers, body };
   }
   function templateCSV() {
-    const h = ['Student Name', 'Student ID', 'School Year', 'Test', 'Grade', 'Group', 'Years in ELD', 'Listening PL', 'Speaking PL', 'Reading PL', 'Writing PL', 'Listening Scale Score', 'Speaking Scale Score', 'Reading Scale Score', 'Writing Scale Score'];
-    const ex = ['Example Student', 'A123', '2025-26', 'LAS Links', '7', 'Period 2', '4', '3', '3', '2', '2', '520', '515', '470', '465'];
+    const h = ['Student Name', 'Student ID', 'School Year', 'Test', 'Grade', 'Group', 'Years in ELD', 'Listening PL', 'Speaking PL', 'Reading PL', 'Writing PL', 'Listening Scale Score', 'Speaking Scale Score', 'Reading Scale Score', 'Writing Scale Score', 'Overall PL', 'Literacy PL', 'State ELA Level', 'Benchmark'];
+    const ex = ['Example Student', 'A123', '2025-26', 'LAS Links', '7', 'Period 2', '4', '3', '3', '2', '2', '520', '515', '470', '465', '3', '2', '2', 'Below'];
     const blob = new Blob(['﻿' + h.join(',') + '\n' + ex.join(',') + '\n'], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'DIALD-template.csv';
     document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
@@ -294,10 +343,10 @@
       <text class="axl" x="${(x0 + x1) / 2}" y="${H - 8}" text-anchor="middle">LITERACY (lower of Reading, Writing) →</text>
       <text class="axl" transform="translate(16 ${(y0 + y1) / 2}) rotate(-90)" text-anchor="middle">ORAL LANGUAGE (lower of Listening, Speaking) →</text>
       ${showPrev ? pts.filter(p => p.prev).map(p => { const px = X(p.prev.x), py = Y(p.prev.y); return Math.hypot(px - p.cx, py - p.cy) < 6 ? '' : `<line x1="${px}" y1="${py}" x2="${p.cx}" y2="${p.cy}" stroke="#8aa0b4" stroke-width="1.4" marker-end="url(#qarrow)" opacity=".85"/><circle cx="${px}" cy="${py}" r="3" fill="#fff" stroke="#8aa0b4"/>`; }).join('') : ''}
-      ${pts.map(p => `<g class="qdot" data-key="${esc(p.it.s.key)}" tabindex="0" role="button" aria-label="${esc(p.it.s.name)}: ${p.it.r.quadrant ? p.it.r.quadrant.id : ''}, ${p.it.r.risk.level} risk">
+      ${pts.map(p => `<g class="qdot" data-key="${esc(p.it.s.key)}" tabindex="0" role="button" aria-label="${esc(p.it.s.name)}: ${p.it.r.quadrant ? p.it.r.quadrant.id : ''}, ${esc(p.it.r.risk.label)}">
         <circle cx="${p.cx}" cy="${p.cy}" r="7.5" fill="${QCOLOR[p.it.r.quadrant.id]}" stroke="#fff" stroke-width="2"/>
-        ${p.it.r.risk.level === 'High' ? `<circle cx="${p.cx}" cy="${p.cy}" r="11" fill="none" stroke="#a83c32" stroke-width="2"/>` : ''}
-        <title>${esc(p.it.s.name)} · L${p.it.last.listening} S${p.it.last.speaking} R${p.it.last.reading} W${p.it.last.writing} · ${p.it.r.risk.level} risk</title></g>`).join('')}
+        ${p.it.r.risk.level === 'Persistent' || p.it.r.risk.level === 'Horizon' ? `<circle cx="${p.cx}" cy="${p.cy}" r="11" fill="none" stroke="#a83c32" stroke-width="2"/>` : ''}
+        <title>${esc(p.it.s.name)} · L${p.it.last.listening} S${p.it.last.speaking} R${p.it.last.reading} W${p.it.last.writing} · ${esc(p.it.r.risk.label)}</title></g>`).join('')}
     </svg>`;
   }
   function barChart(rows, max) {
@@ -317,41 +366,42 @@
     const groups = [...new Set(items.map(x => x.s.group).filter(Boolean))].sort();
     const grades = [...new Set(items.map(x => x.s.grade).filter(Boolean))].sort((a, b) => (a === 'K' ? 0 : +a) - (b === 'K' ? 0 : +b));
     const f = items.filter(x => (!ui.q || x.r.quadrant.id === ui.q) && (!ui.risk || x.r.risk.level === ui.risk) && (!ui.group || x.s.group === ui.group) && (!ui.grade || x.s.grade === ui.grade) && (!ui.search || x.s.name.toLowerCase().includes(ui.search.toLowerCase())))
-      .sort((a, b) => RISK_ORDER[a.r.risk.level] - RISK_ORDER[b.r.risk.level] || a.s.name.localeCompare(b.s.name));
+      .sort((a, b) => SIG_ORDER[a.r.risk.level] - SIG_ORDER[b.r.risk.level] || a.s.name.localeCompare(b.s.name));
     const cnt = (fn) => f.filter(fn).length;
-    const persistent = cnt(x => x.r.dims.persistence.status === 'concern');
-    const atRisk = cnt(x => x.r.risk.level === 'High' || x.r.risk.level === 'Moderate');
+    const persistent = cnt(x => x.r.risk.level === 'Persistent' || x.r.risk.level === 'Horizon');
+    const nearHorizon = cnt(x => x.r.risk.level === 'Horizon');
+    const mayExit = cnt(x => x.r.risk.flags.mayExit);
     const first = ctx.profile && ctx.profile.full_name ? ctx.profile.full_name.split(' ')[0] : '';
     const qCounts = ['Q1', 'Q2', 'Q3', 'Q4'].map(q => ({ q, n: cnt(x => x.r.quadrant.id === q) }));
-    const riskRows = ['High', 'Moderate', 'Low', 'Inconclusive'].map(k => ({ label: k, value: cnt(x => x.r.risk.level === k), color: { High: '#a83c32', Moderate: '#E3A93B', Low: '#2A9488', Inconclusive: '#9fb0c0' }[k], filter: 'risk:' + k }));
+    const riskRows = ['Horizon', 'Persistent', 'Emerging', 'None', 'NA'].map(k => ({ label: sigLabel(k).replace(' · near LTEL horizon', ' · near horizon'), value: cnt(x => x.r.risk.level === k), color: SIG_COLOR[k], filter: 'risk:' + k }));
     riskRows.forEach(r => { r.text = r.value; });
     const domRows = DOMAINS.map(d => { const ok = cnt(x => x.last[d] != null && x.last[d] >= high); const n = cnt(x => x.last[d] != null); return { label: DNAME[d], value: n ? ok / n * 100 : 0, color: d === 'listening' || d === 'speaking' ? '#2A9488' : '#1B3A5C', text: n ? Math.round(ok / n * 100) + '% <small>(' + ok + ' of ' + n + ')</small>' : '—' }; });
     const opt = (arr, cur, all) => `<option value="">${all}</option>` + arr.map(v => `<option ${v === cur ? 'selected' : ''} value="${esc(v)}">${esc(v)}</option>`).join('');
     main.innerHTML = `<div class="dash">
       <div class="dash-head"><div class="dash-in">
         <div><div class="eyebrow">${first ? 'Welcome back, ' + esc(first) : 'Your dashboard'}</div><h1>My students</h1>
-          <p class="small"><span class="local-chip">🔒 On this computer only</span> ${esc(data.fileName)} · ${data.students.length} students${data.skipped ? ' · ' + data.skipped + ' rows skipped (no levels)' : ''}</p></div>
+          <p class="small"><span class="local-chip">🔒 On this computer only</span> ${esc(data.fileName)} · ${data.students.length} students${data.skipped ? ' · ' + data.skipped + ' rows skipped (no levels)' : ''} · <span class="chip" title="${esc(stateNote(data.state || ''))}">Rules: ${esc(S.get(data.state || '').code ? S.get(data.state).name : 'General')}</span></p></div>
         <div class="row"><button class="btn" id="r-new" type="button">Load another file</button><button class="btn ghost danger" id="r-clear" type="button">Clear file</button></div>
       </div></div>
       <div class="dash-in">
         <div class="tiles">
           <div class="tile"><span>Students</span><b>${f.length}</b><small>${f.length === items.length ? 'in this file' : 'with the filters below'}</small></div>
           <div class="tile t-q1"><span>Oral dominant (Q1)</span><b>${qCounts[0].n}</b><small>speaking ahead of literacy</small></div>
-          <div class="tile t-warn"><span>Moderate or high risk</span><b>${atRisk}</b><small>provisional LTEL trajectory</small></div>
-          <div class="tile t-navy"><span>Same pattern 2+ years</span><b>${persistent}</b><small>oral or literacy stays ahead</small></div>
+          <div class="tile t-warn"><span>Persistent signal</span><b>${persistent}</b><small>${nearHorizon} near the ${data.horizon || 6}-year horizon</small></div>
+          <div class="tile t-navy"><span>May meet exit criteria</span><b>${mayExit}</b><small>${esc(S.get(data.state || '').exit ? S.get(data.state).exit.short : 'all domains 4+')} · check procedure</small></div>
         </div>
         <div class="dash-grid">
           <div class="card chart-card">
             <div class="row" style="justify-content:space-between">
               <div class="seg-ctl" role="tablist">
                 <button role="tab" data-view="quad" class="${ui.view === 'quad' ? 'on' : ''}">Quadrants</button>
-                <button role="tab" data-view="risk" class="${ui.view === 'risk' ? 'on' : ''}">Risk</button>
+                <button role="tab" data-view="risk" class="${ui.view === 'risk' ? 'on' : ''}">Signals</button>
                 <button role="tab" data-view="dom" class="${ui.view === 'dom' ? 'on' : ''}">Domains</button>
               </div>
               ${ui.view === 'quad' ? `<label class="row small" style="gap:6px;font-weight:600;margin:0"><input type="checkbox" id="r-prev" style="width:auto" ${ui.prev ? 'checked' : ''}> Show last year’s position</label>` : ''}
             </div>
             ${ui.view === 'quad' ? quadrantChart(f, high, esc, ui.prev) + `<p class="small">Each dot is one student, placed at the lower level of each pair, the same rule DIALD uses for High and Low (High = level ${high}+). Arrows start at last year’s position. A red ring means high risk. Click a dot to open the student.</p>`
-              : ui.view === 'risk' ? `<h3>Provisional LTEL trajectory risk</h3>${barChart(riskRows, Math.max(1, ...riskRows.map(r => r.value)))}<p class="small">Risk is theoretical, not statistical. Click a bar to filter the list.</p>`
+              : ui.view === 'risk' ? `<h3>Trajectory signal</h3>${barChart(riskRows, Math.max(1, ...riskRows.map(r => r.value)))}<p class="small">Provisional: a domain is flagged when it is below the reference level and did not grow; two intervals in a row make it persistent. Not a probability. Click a bar to filter the list.</p>`
               : `<h3>Students at or above level ${high}, by domain</h3>${barChart(domRows, 100)}<p class="small">Latest year. Teal = oral language, navy = literacy. DIALD does not average levels.</p>`}
           </div>
           <div class="card">
@@ -367,17 +417,18 @@
             ${groups.length ? `<div><label for="r-group">Group</label><select id="r-group">${opt(groups, ui.group, 'All groups')}</select></div>` : ''}
             ${grades.length ? `<div><label for="r-grade">Grade</label><select id="r-grade">${opt(grades, ui.grade, 'All grades')}</select></div>` : ''}
             <div><label for="r-q">Profile</label><select id="r-q">${opt(['Q1', 'Q2', 'Q3', 'Q4'], ui.q, 'All profiles')}</select></div>
-            <div><label for="r-risk">Risk</label><select id="r-risk">${opt(['High', 'Moderate', 'Low', 'Inconclusive'], ui.risk, 'All')}</select></div>
+            <div><label for="r-risk">Signal</label><select id="r-risk"><option value="">All</option>${['Horizon', 'Persistent', 'Emerging', 'None', 'NA'].map(k => `<option value="${k}" ${ui.risk === k ? 'selected' : ''}>${esc(sigLabel(k))}</option>`).join('')}</select></div>
           </div>
           <div class="tbl-wrap"><table class="tbl roster">
-            <thead><tr><th>Student</th><th>Grade</th>${groups.length ? '<th>Group</th>' : ''}<th>Latest</th>${DOMAINS.map(d => `<th title="${DNAME[d]}">${D1[d]}</th>`).join('')}<th>Profile</th><th>Pattern</th><th>Risk</th><th></th></tr></thead>
+            <thead><tr><th>Student</th><th>Grade</th>${groups.length ? '<th>Group</th>' : ''}<th>Latest</th>${DOMAINS.map(d => `<th title="${DNAME[d]}">${D1[d]}</th>`).join('')}<th>Profile</th><th>Pattern</th><th>Signal</th><th title="Concerns across time in services, English growth, benchmark, and state ELA test">Criteria</th><th></th></tr></thead>
             <tbody>${f.map(x => `<tr data-key="${esc(x.s.key)}">
               <td><b>${esc(x.s.name)}</b></td><td>${esc(x.s.grade || '—')}</td>${groups.length ? `<td>${esc(x.s.group || '—')}</td>` : ''}<td class="small">${esc(x.last.label)}</td>
               ${DOMAINS.map(d => `<td class="lv ${x.last[d] != null && x.last[d] >= high ? 'hi' : 'lo'}">${x.last[d] == null ? '—' : x.last[d]}</td>`).join('')}
               <td><span class="qchip" style="--c:${QCOLOR[x.r.quadrant.id]}">${x.r.quadrant.id}</span></td>
               <td class="small">${x.r.dims.persistence.run >= 2 && (x.r.dims.persistence.direction === 'oral' || x.r.dims.persistence.direction === 'literacy') ? (x.r.dims.persistence.direction === 'oral' ? 'Oral ahead ' : 'Literacy ahead ') + x.r.dims.persistence.run + ' yrs' : '—'}</td>
-              <td><span class="badge ${x.r.risk.level}" style="font-size:12px;padding:3px 8px">${x.r.risk.level}</span></td>
-              <td><button class="btn ghost" data-open="${esc(x.s.key)}" type="button">Open →</button></td></tr>`).join('') || `<tr><td colspan="12" class="small">No students match these filters.</td></tr>`}</tbody></table></div>
+              <td><span class="badge ${x.r.risk.level}" style="font-size:12px;padding:3px 8px">${esc(x.r.risk.label)}</span>${x.r.risk.flags.mayExit ? ' <span class="chip good" title="Meets the exit criteria in this file">Exit?</span>' : ''}</td>
+              <td class="small" title="${esc(x.r.criteria.map(c => c.label + ': ' + c.text).join('\n'))}">${x.r.criteriaAvailable ? `<b class="${x.r.criteriaConcerns >= 3 ? 'crit-hi' : ''}">${x.r.criteriaConcerns}</b> of ${x.r.criteriaAvailable}` : '—'}</td>
+              <td><button class="btn ghost" data-open="${esc(x.s.key)}" type="button">Open →</button></td></tr>`).join('') || `<tr><td colspan="13" class="small">No students match these filters.</td></tr>`}</tbody></table></div>
         </div>
       </div></div>`;
     const $ = s => main.querySelector(s), $$ = s => [...main.querySelectorAll(s)];
@@ -395,6 +446,7 @@
     $$('.qdot').forEach(g => { g.onclick = () => open(g.dataset.key); g.onkeydown = e => { if (e.key === 'Enter') open(g.dataset.key); }; });
     $('#r-new').onclick = () => { ui.pending = null; data = null; persist(); rerender(); };
     $('#r-clear').onclick = () => { data = null; persist(); ctx.toast('File cleared from this browser.'); rerender(); };
+    if (ctx.afterRender) ctx.afterRender();
   }
 
   function emptyView(main, ctx) {
@@ -446,6 +498,7 @@
     main.querySelector('#sample').onclick = () => startMapping(sampleRaw(), main, ctx);
     main.querySelector('#tpl').onclick = templateCSV;
     if (ctx.afterEmpty) ctx.afterEmpty();
+    if (ctx.afterRender) ctx.afterRender();
   }
 
   function startMapping(raw, main, ctx) {
@@ -454,6 +507,20 @@
     mappingView(main, ctx);
   }
 
+  const S = window.DIALDStates;
+  function stateDefault(ctx) {
+    if (ui.pending && ui.pending.state != null) return ui.pending.state;
+    if (data && data.state != null) return data.state;
+    return S.codeFor(ctx.profile && ctx.profile.state) || '';
+  }
+  function stateOptions(cur) {
+    return S.STATES.map(st => `<option value="${st.code}" ${cur === st.code ? 'selected' : ''}>${st.name}</option>`).join('') + `<option value="" ${cur ? '' : 'selected'}>${S.OTHER.name}</option>`;
+  }
+  function stateNote(code) {
+    const st = S.get(code);
+    return st.code ? st.name + ': ' + st.elp.test + ' · exit: ' + st.exit.short + ' · LTEL: ' + st.ltel.years + ' years · ' + st.academic.test + '.'
+      : 'General rule: any growth, exit when all four domains reach level 4, LTEL at 6 years. Rules for more states are coming.';
+  }
   function mappingView(main, ctx) {
     const { esc } = ctx; const { raw, map } = ui.pending;
     const ex = i => { const r = raw.body.find(r => String(r[i]).trim() !== ''); return r ? String(r[i]).slice(0, 28) : ''; };
@@ -470,9 +537,12 @@
           <td><select data-field="${f.k}"><option value="">— not in my file —</option>${raw.headers.map((h, i) => `<option value="${i}" ${map[f.k] === i ? 'selected' : ''}>${esc(h || 'Column ' + (i + 1))}</option>`).join('')}</select></td>
           <td class="small">${map[f.k] == null ? '' : esc(ex(map[f.k]))}</td></tr>`).join('')}
         </tbody></table></div>
-        <div class="fields" style="max-width:520px;margin-top:14px">
+        <div class="fields" style="max-width:780px;margin-top:14px">
+          <div><label for="m-state">State rules</label><select id="m-state">${stateOptions(stateDefault(ctx))}</select></div>
+          <div><label for="m-hz">LTEL horizon</label><select id="m-hz">${[5, 6, 7].map(v => `<option value="${v}" ${v === ((data && data.horizon) || S.get(stateDefault(ctx)).ltel.years || 6) ? 'selected' : ''}>${v} years</option>`).join('')}</select></div>
           <div><label for="m-high">High = level</label><select id="m-high">${[2, 3, 4].map(v => `<option value="${v}" ${v === ((data && data.high) || 3) ? 'selected' : ''}>${v} or above</option>`).join('')}</select></div>
         </div>
+        <p class="small" id="m-state-note">${esc(stateNote(stateDefault(ctx)))}</p>
         <label class="row" style="font-weight:600;gap:8px;margin-top:12px"><input type="checkbox" id="m-keep" style="width:auto"> Keep this file on this computer until I clear it (otherwise it is forgotten when this tab closes)</label>
         <p id="m-msg" class="err" role="alert">${missing.length ? 'Choose the column for: ' + missing.map(d => DNAME[d] + ' level').join(', ') + '.' : noId ? 'Choose a column that tells students apart (name or ID).' : ''}</p>
         <div class="row"><button class="btn primary" id="m-go" type="button">Analyze →</button><button class="btn ghost" id="m-back" type="button">Choose another file</button></div>
@@ -485,12 +555,17 @@
       mappingView(main, ctx);
     });
     $('#m-back').onclick = () => { ui.pending = null; render(main, ctx); };
+    $('#m-state').onchange = () => {
+      ui.pending.state = $('#m-state').value;
+      const y = S.get(ui.pending.state).ltel.years; if ([5, 6, 7].includes(y)) $('#m-hz').value = String(y);
+      $('#m-state-note').textContent = stateNote(ui.pending.state);
+    };
     $('#m-go').onclick = () => {
       if (DOMAINS.some(d => map[d] == null) || noId) { $('#m-msg').textContent = 'Choose the required columns first.'; return; }
       const maps = ls.get(localStorage, MAPKEY) || {}; maps[signature(raw.headers)] = map; ls.set(localStorage, MAPKEY, maps);
       const built = build(raw, map, Number($('#m-high').value));
       if (!built.students.length) { $('#m-msg').textContent = 'No rows with levels were found. Check the level columns.'; return; }
-      built.keep = $('#m-keep').checked;
+      built.keep = $('#m-keep').checked; built.horizon = Number($('#m-hz').value); built.state = $('#m-state').value;
       data = built; ui = { view: 'quad', prev: true, q: '', risk: '', group: '', grade: '', search: '', pending: null };
       persist(); render(main, ctx); window.scrollTo(0, 0);
     };
@@ -500,6 +575,6 @@
     render, planNames, rememberPlanName, forgetPlanName, keySheetCSV, cleanLabel,
     hasData: () => !!(data && data.students.length),
     // exported for tests
-    _detect: detect, _widen: widen, _level: level, _build: build, _sampleRaw: sampleRaw, _planInputs: planInputs
+    _detect: detect, _widen: widen, _level: level, _ela: elaLevel, _bench: benchCat, _build: build, _sampleRaw: sampleRaw, _planInputs: planInputs
   };
 })();

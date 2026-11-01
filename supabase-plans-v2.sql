@@ -15,14 +15,15 @@ returns boolean language plpgsql immutable set search_path = '' as $$
 declare k text; el jsonb;
 begin
   for k in select jsonb_object_keys(p_inputs) loop
-    if k not in ('grade','years','highLevel','periods','academic','priorResponse','test') then return false; end if;
+    if k not in ('grade','years','highLevel','horizon','exitLevel','periods','academic','priorResponse','test','state') then return false; end if;
   end loop;
   for el in select * from jsonb_array_elements(coalesce(p_inputs->'periods','[]'::jsonb)) loop
     for k in select jsonb_object_keys(el) loop
-      if k not in ('label','listening','speaking','reading','writing','overall','scale','test') then return false; end if;
+      if k not in ('label','listening','speaking','reading','writing','overall','scale','test','grade','literacy','ela','bench') then return false; end if;
     end loop;
+    if coalesce(el->>'grade','') !~ '^(K|[0-9]{1,2})?$' then return false; end if;
     if coalesce(el->>'label','') !~ '^[A-Za-z0-9 .,/()–-]{0,24}$' or coalesce(el->>'label','') ~ '[0-9]{5,}' then return false; end if;
-    for k in select unnest(array['listening','speaking','reading','writing','overall']) loop
+    for k in select unnest(array['listening','speaking','reading','writing','overall','literacy','ela','bench']) loop
       if el ? k and jsonb_typeof(el->k) not in ('number','null') then return false; end if;
     end loop;
     if el ? 'scale' then
@@ -32,6 +33,7 @@ begin
       end loop;
     end if;
   end loop;
+  if coalesce(p_inputs->>'state','') !~ '^([A-Z]{2})?$' then return false; end if;
   if coalesce(p_inputs->>'grade','') !~ '^[A-Za-z0-9-]{0,6}$' then return false; end if;
   if p_inputs ? 'years' and jsonb_typeof(p_inputs->'years') not in ('number','null') and coalesce(p_inputs->>'years','') <> '' then return false; end if;
   for k in select jsonb_object_keys(p_result) loop
