@@ -243,6 +243,7 @@
     if (!window.DIALDRoster) { location.hash = '#/learner'; return; }
     window.DIALDRoster.render(main, {
       esc, profile, toast,
+      ai: C.aiUrl && user && sb ? { ask: askAI, format: aiFormat, left: () => sb.rpc('ai_credits_left').then(({ data }) => data) } : null,
       openStudent: st => {
         A = { planId: null, planNumber: null, inputs: st.inputs, ran: true, stage: 0, selected: [], progress: [], dirty: true, localName: st.name };
         persistA(); location.hash = '#/learner?keep=1';
@@ -728,7 +729,7 @@
     };
   }
   function aiFormat(t) {
-    const H = ['What the data shows', 'What to look at next', 'Questions for your team'];
+    const H = ['Patterns in your class', 'Ideas for the whole class', 'Small groups to consider', 'What to monitor', 'Possible reasons to check', 'What to try in the next 6 weeks', 'How to measure progress', 'Questions for your team', 'What the data shows', 'What to look at next'];
     let html = '', list = false;
     String(t).split(/\n+/).map(x => x.trim().replace(/^#+\s*|\*\*/g, '')).filter(Boolean).forEach(line => {
       const h = H.find(x => line.toLowerCase().replace(/:$/, '') === x.toLowerCase());
@@ -739,6 +740,16 @@
     });
     return html + (list ? '</ul>' : '');
   }
+  // One request to the AI Worker. Returns { text, left } or throws with a message for the teacher.
+  async function askAI(task, data) {
+    const { data: s } = await sb.auth.getSession(); const token = s && s.session && s.session.access_token;
+    if (!token) throw new Error('Please sign in again.');
+    const r = await fetch(C.aiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ task, data }) });
+    const j = await r.json().catch(() => ({}));
+    if (r.status === 429) throw new Error('You used your 20 AI requests for today. Come back tomorrow.');
+    if (!r.ok) throw new Error(j.error || 'The AI is not available right now.');
+    return j;
+  }
   function bindAI(res) {
     const go = $('#ai-go'); if (!go) return;
     const left = $('#ai-left'), out = $('#ai-out');
@@ -746,16 +757,11 @@
     go.onclick = async () => {
       go.disabled = true; go.textContent = 'Writing…'; out.innerHTML = '<p class="small">This takes a few seconds.</p>';
       try {
-        const { data: s } = await sb.auth.getSession(); const token = s && s.session && s.session.access_token;
-        if (!token) throw new Error('Please sign in again.');
-        const r = await fetch(C.aiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ task: 'explain', data: aiPayload(res) }) });
-        const j = await r.json().catch(() => ({}));
-        if (r.status === 429) throw new Error('You used your 20 AI explanations for today. Come back tomorrow.');
-        if (!r.ok) throw new Error(j.error || 'The AI is not available right now.');
-        out.innerHTML = `<div class="ai-text">${aiFormat(j.text)}</div><p class="small ai-note">Written by AI from the data above. Check it against what you know about the learner; it is not a diagnosis.</p>`;
+        const j = await askAI('explain', aiPayload(res));
+        out.innerHTML = `<div class="ai-text">${aiFormat(j.text)}</div><p class="small ai-note">Ideas written by AI from the data above. Use your professional judgment and what you know about the learner; this is not a diagnosis.</p>`;
         if (left && typeof j.left === 'number') left.textContent = j.left + ' of 20 left today';
-        go.textContent = 'Explain again';
-      } catch (e) { out.innerHTML = `<p class="err">${esc(e.message || 'Something went wrong.')}</p>`; go.textContent = 'Explain this profile'; }
+        go.textContent = 'Get new ideas';
+      } catch (e) { out.innerHTML = `<p class="err">${esc(e.message || 'Something went wrong.')}</p>`; go.textContent = 'Get ideas for this learner'; }
       go.disabled = false;
     };
   }
@@ -793,8 +799,8 @@
         </div>
         ${C.aiUrl && user ? `<div class="card ai-card" id="ai-card">
           <div class="row" style="justify-content:space-between;align-items:center;gap:10px"><h3 style="margin:0">✨ Explain with AI</h3><span class="small" id="ai-left"></span></div>
-          <p class="small" style="margin:6px 0 12px">A short explanation in plain English and three questions for your team. DIALD sends only levels and results, never names.</p>
-          <button class="btn primary" type="button" id="ai-go">Explain this profile</button>
+          <p class="small" style="margin:6px 0 12px">Possible reasons to check, strategies to try for 6 weeks, a goal to measure, and questions for your team. DIALD sends only levels and results, never names.</p>
+          <button class="btn primary" type="button" id="ai-go">Get ideas for this learner</button>
           <div id="ai-out" aria-live="polite"></div>
         </div>` : ''}
         <div class="card">
@@ -1272,7 +1278,7 @@
       <h2>What we store</h2><ul><li>Your email address and password (managed securely by our authentication provider), or your Google sign-in.</li><li>Your teacher profile: your name, school district, state, the grades you teach, and your role.</li><li>Plans you choose to save: proficiency levels and scale scores, test year labels, grade band and grade for each year, years of services, general academic and response categories, the pathways you selected, and progress numbers.</li></ul>
       <h2>What we do not store</h2><ul><li>Student names, IDs, dates of birth, schools, or any other information that identifies a student.</li><li>Free-text notes about students. The tool has no free-text fields for student information.</li></ul>
       <p>Please do not enter identifying information anywhere on this site.</p>
-      <h2>Explain with AI</h2><p>If you choose <b>Explain with AI</b>, DIALD sends the learner’s levels, test year labels, grade band, years of services, and results — never names or IDs — to Cloudflare Workers AI, which writes the explanation. Cloudflare does not use this data to train its models. Each teacher can use it 20 times a day; DIALD stores only how many times you used it today.</p>
+      <h2>Explain with AI</h2><p>If you choose <b>Explain with AI</b>, DIALD sends the learner’s levels, test year labels, grade band, years of services, and results — never names or IDs — to Cloudflare Workers AI, which writes the explanation. For <b>Class ideas with AI</b>, it sends only counts for the group (for example, how many students are in each profile). Cloudflare does not use this data to train its models. Each teacher can use it 20 times a day; DIALD stores only how many times you used it today.</p>
             <h2>Files you analyze</h2><p>When you use <b>Analyze my file</b>, your file is read <b>inside your browser, on your computer</b>. It is not uploaded, and student names and IDs are never sent to our servers. If you choose “Keep this file on this computer,” it is kept in your browser’s storage until you clear it. Otherwise it is forgotten when you close the tab.</p>
       <p>If you save a plan for a student from your file, only the allowed fields are saved: levels, scale scores, test year labels, grade band and grade for each year, years of services, results, chosen pathways, and progress numbers. The student’s name stays on your computer, linked to the plan, so you can recognize it. Our database also rejects any field that is not on this list.</p>
       <h2>How we use data</h2><p>To run the site: to let you sign in, save, and reopen your plans. Your teacher profile also helps the author understand where and how DIALD is used (for example, how many teachers use it by state, grade, or role). Results are reported only in summary form, never by name. We do not sell, rent, or share your data, and we do not use it for advertising.</p>

@@ -433,6 +433,12 @@
             <div class="privacy-note" style="margin-top:12px"><span>🔒</span><div><b>Names stay here.</b> Your file is read on this computer. DIALD saves only levels and results when you save a plan.</div></div>
           </div>
         </div>
+        ${ctx.ai ? `<div class="card ai-card" id="cai">
+          <div class="row" style="justify-content:space-between;align-items:center;gap:10px"><h3 style="margin:0">✨ Class ideas with AI</h3><span class="small" id="cai-left"></span></div>
+          <p class="small" style="margin:6px 0 12px">Patterns in your group, ideas for the whole class, small groups to consider, and what to monitor. It uses the <b>${f.length} students shown</b> with the filters below (choose a group or grade to focus). DIALD sends only counts, never names.</p>
+          <button class="btn primary" type="button" id="cai-go" ${f.length ? '' : 'disabled'}>Get ideas for this group</button>
+          <div id="cai-out" aria-live="polite"></div>
+        </div>` : ''}
         <div class="card">
           <div class="filters">
             <div><label for="r-search">Search</label><input id="r-search" placeholder="Student name" value="${esc(ui.search)}"></div>
@@ -462,6 +468,20 @@
     $$('.hbar[data-filter]').forEach(b => b.onclick = () => { const [k, v] = b.dataset.filter.split(':'); if (k === 'risk') { ui.risk = ui.risk === v ? '' : v; rerender(); } });
     [['#r-group', 'group'], ['#r-grade', 'grade'], ['#r-q', 'q'], ['#r-risk', 'risk']].forEach(([id, k]) => { const el = $(id); if (el) el.onchange = () => { ui[k] = el.value; rerender(); }; });
     const sr = $('#r-search'); let t; sr.oninput = () => { clearTimeout(t); t = setTimeout(() => { ui.search = sr.value; rerender(); const n = main.querySelector('#r-search'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250); };
+    if (ctx.ai) {
+      const go = $('#cai-go'), out = $('#cai-out'), left = $('#cai-left');
+      ctx.ai.left().then(n => { if (typeof n === 'number' && left) left.textContent = n + ' of 20 left today'; }).catch(() => {});
+      go.onclick = async () => {
+        go.disabled = true; go.textContent = 'Writing…'; out.innerHTML = '<p class="small">This takes a few seconds.</p>';
+        try {
+          const j = await ctx.ai.ask('class', classPayload(f, high));
+          out.innerHTML = `<div class="ai-text">${ctx.ai.format(j.text)}</div><p class="small ai-note">Ideas written by AI from the counts above. Use your professional judgment; this is not a diagnosis.</p>`;
+          if (left && typeof j.left === 'number') left.textContent = j.left + ' of 20 left today';
+          go.textContent = 'Get new ideas';
+        } catch (e) { out.innerHTML = `<p class="err">${esc(e.message || 'Something went wrong.')}</p>`; go.textContent = 'Get ideas for this group'; }
+        go.disabled = false;
+      };
+    }
     const open = key => { const s = data.students.find(x => x.key === key); if (s) ctx.openStudent({ name: s.name, key: s.key, inputs: planInputs(s, high) }); };
     $$('[data-open]').forEach(b => b.onclick = () => open(b.dataset.open));
     $$('tr[data-key]').forEach(tr => tr.ondblclick = () => open(tr.dataset.key));
@@ -593,6 +613,29 @@
       data = built; ui = { view: 'quad', prev: true, q: '', risk: '', group: '', grade: '', search: '', pending: null };
       persist(); render(main, ctx); window.scrollTo(0, 0);
     };
+  }
+
+  // Counts only (no names) for "Class ideas with AI".
+  function classPayload(items, high) {
+    const cnt = {}, add = (o, k) => { o[k] = (o[k] || 0) + 1; };
+    const grades = {}, quadrants = {}, signals = {}, lowest = {}, bench = {}, ela = {}, tests = {};
+    const years = [];
+    let pastTime = 0, mayExit = 0, concerns3 = 0;
+    const dom = { listening: [0, 0], speaking: [0, 0], reading: [0, 0], writing: [0, 0] };
+    items.forEach(({ s, r, last }) => {
+      if (s.grade) add(grades, band(s.grade));
+      add(quadrants, r.quadrant.id); add(signals, r.risk.level);
+      DOMAINS.forEach(d => { if (last[d] != null) { dom[d][1]++; if (last[d] >= high) dom[d][0]++; } });
+      const lv = DOMAINS.filter(d => last[d] != null); if (lv.length) { const m = Math.min(...lv.map(d => last[d])); lv.filter(d => last[d] === m).forEach(d => add(lowest, d)); }
+      if (s.years !== '' && s.years != null) { years.push(Number(s.years)); if (Number(s.years) >= r.risk.flags.horizon) pastTime++; }
+      if (r.risk.flags.mayExit) mayExit++; if (r.criteriaConcerns >= 3) concerns3++;
+      if (last.bench) add(bench, String(last.bench)); if (last.ela) add(ela, String(last.ela)); if (s.test) add(tests, s.test);
+    });
+    years.sort((a, b) => a - b);
+    const domains = {}; DOMAINS.forEach(d => { if (dom[d][1]) domains[d] = Math.round(dom[d][0] / dom[d][1] * 100); });
+    const st = S.get((data && data.state) || '');
+    return { n: items.length, state: st.code ? st.name : '', test: Object.keys(tests).sort((a, b) => tests[b] - tests[a])[0] || '', high, grades, quadrants, signals, domains, lowest,
+      yearsMedian: years.length ? years[Math.floor(years.length / 2)] : null, pastTime, mayExit, concerns3, bench, ela };
   }
 
   // Summaries for the home page: the teacher's class if a file is loaded, otherwise the fictional sample.
