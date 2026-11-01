@@ -84,11 +84,13 @@
       location.hash = '#/login?next=' + encodeURIComponent(here);
       return;
     }
-    const map = { '': 'home', analyze: 'analyze', plan: 'plans', library: 'library', pathway: 'library', activity: 'library', plans: 'plans', help: 'help' };
+    const map = { '': 'home', analyze: 'analyze', learner: 'analyze', class: 'analyze', plan: 'plans', library: 'library', pathway: 'library', activity: 'library', plans: 'plans', help: 'help' };
     setNav(map[p] || '');
     if (p === 'profile') profilePage(q);
     else if (p === '') home();
-    else if (p === 'analyze') analyzePage(q);
+    else if (p === 'analyze') trajectoryHub(q);
+    else if (p === 'learner') analyzePage(q);
+    else if (p === 'class') classPage();
     else if (p === 'library') libraryPage(q);
     else if (p === 'pathway') pathwayPage(parts[1]);
     else if (p === 'activity') activityPage(parts[1], q);
@@ -234,25 +236,47 @@
     }
   }
 
-  function home() { if (user) dashboard(); else landing('home', 'signin'); }
+  function home() { if (user) homeDashboard(); else landing('home', 'signin'); }
 
-  // Signed-in home: the class dashboard. The roster file is read in the browser (diald-roster.js).
-  function dashboard() {
-    if (!window.DIALDRoster) { welcomeHome(); return; }
+  // A whole class: the roster file is read in the browser (diald-roster.js).
+  function classPage() {
+    if (!window.DIALDRoster) { location.hash = '#/learner'; return; }
     window.DIALDRoster.render(main, {
       esc, profile, toast,
       openStudent: st => {
-        A = { planId: null, planNumber: null, inputs: st.inputs, ran: true, stage: 1, selected: [], progress: [], dirty: true, localName: st.name };
-        persistA(); location.hash = '#/analyze?keep=1';
-      },
-      afterRender: () => { if (user && profile && window.DIALDHelp) window.DIALDHelp.maybeTour(); },
-      afterEmpty: async () => {
-        if (!sb) return;
-        const { count } = await sb.from('plans').select('id', { count: 'exact', head: true });
-        const el = document.getElementById('plan-count');
-        if (el && typeof count === 'number') el.textContent = count ? `${count} saved plan${count === 1 ? '' : 's'}. Reopen them and record progress.` : 'No saved plans yet.';
+        A = { planId: null, planNumber: null, inputs: st.inputs, ran: true, stage: 0, selected: [], progress: [], dirty: true, localName: st.name };
+        persistA(); location.hash = '#/learner?keep=1';
       }
     });
+  }
+
+  // Learner Trajectory: choose a whole class or one learner.
+  function trajectoryHub(q) {
+    if (q.get('sample') || q.get('new') || q.get('keep')) { location.replace('#/learner?' + q.toString()); return; }
+    const R = window.DIALDRoster, cls = R && R.hasData() ? R.summary() : null;
+    const cur = A.ran && !A.planId ? (A.localName || 'your current learner') : '';
+    main.innerHTML = `<div class="page hub">
+      <div class="eyebrow">Learner Trajectory</div>
+      <h1>How do you want to start?</h1>
+      <p class="lead" style="max-width:720px">Look at a whole class from your test export, or at one learner at a time. Both follow the five DIALD stages.</p>
+      <div class="hub-grid">
+        <a class="hub-card" href="#/class">
+          <span class="hub-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M2.5 19c.8-3.2 3-5 5.5-5s4.7 1.8 5.5 5M14 18.5c.5-2.3 1.9-3.6 3.5-3.6s3 1.3 3.5 3.6"/></svg></span>
+          <b>A whole class</b>
+          <span>Upload your class file (Excel or CSV). See every student’s profile, trajectory signal, and evidence in one place.</span>
+          <small>${cls ? 'Your class is loaded: ' + cls.n + ' students →' : 'Excel template with instructions included →'}</small>
+        </a>
+        <a class="hub-card gold" href="#/learner${cur ? '' : '?new=1'}">
+          <span class="hub-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c1-4 3.8-6 7-6s6 2 7 6"/></svg></span>
+          <b>One learner</b>
+          <span>Enter one learner’s levels by hand. DIALD builds the profile, then guides you through the next stages.</span>
+          <small>${cur ? 'Continue with ' + esc(cur) + ' →' : 'Start with the data form →'}</small>
+        </a>
+      </div>
+      ${cur ? '<p class="small"><a href="#/learner?new=1">Start a new learner instead</a> · <a href="#/learner?sample=ana">Open the sample case</a></p>' : '<p class="small">Want to see an example first? <a href="#/learner?sample=ana">Open the sample case</a>.</p>'}
+      <h2 style="margin-top:34px">The five stages</h2>
+      <ol class="stage-strip">${CYCLE.map(([t, d], i) => `<li style="--c:${STAGE_LOOK[i].c}"><span>${i + 1}</span><b>${esc(t)}</b><p>${esc(d)}</p></li>`).join('')}</ol>
+    </div>`;
   }
 
   function landing(next, mode) {
@@ -364,6 +388,123 @@
     window.addEventListener('scroll', onScroll, { passive: true }); onScroll();
   }
 
+  // Signed-in home: welcome, updates, class monitor, interactive quadrants, class movement, and the DIALD cycle.
+  const QUAD_INFO = {
+    Q1: { ex: [4, 4, 2, 2], what: 'Listening and speaking are at or above the reference level, but reading or writing is below it.', look: 'Does the gap last more than one year? A lasting oral-dominant pattern is linked to long-term EL risk.', focus: 'Academic reading and writing: text structure, vocabulary in context, and writing with models.' },
+    Q2: { ex: [4, 4, 4, 3], what: 'All four domains are at or above the reference level.', look: 'Does the learner meet the state exit criteria? Are content grades and the state ELA test strong too?', focus: 'Keep building academic language across content classes, and monitor after exit.' },
+    Q3: { ex: [2, 2, 1, 2], what: 'Oral language and literacy are both below the reference level.', look: 'Read it with the learner’s history: a recent arrival or interrupted schooling needs a different plan than years without growth.', focus: 'Foundational language and literacy together, with a lot of structured talk.' },
+    Q4: { ex: [2, 3, 4, 4], what: 'Reading and writing are at or above the reference level, but listening or speaking is below it.', look: 'Is oral participation limited by confidence or by language? Check classroom talk, not only the test.', focus: 'Academic talk: discussion routines, sentence frames, and oral rehearsal before writing.' }
+  };
+  const UPDATES_DEFAULT = [
+    'New: state rules for Connecticut, Massachusetts, California, and New York.',
+    'New: a Help page and a short guided tour. Find them under Help.',
+    'Upload a whole class with the new Excel template in Learner Trajectory.',
+    'The DIALD Library is in development: sample pathways for grades 6–8.',
+    'Questions or ideas? Use the Questions? button at the bottom of the page.'
+  ];
+  function homeDashboard() {
+    const first = profile && profile.full_name ? profile.full_name.split(' ')[0] : '';
+    const R = window.DIALDRoster, sum = R ? R.summary() : null;
+    const ups = (Array.isArray(C.updates) && C.updates.length ? C.updates : UPDATES_DEFAULT).slice(0, 8);
+    const SIGS = [['Horizon', 'Near / past LTEL time', '#7a2a22'], ['Persistent', 'Persistent', '#a83c32'], ['Emerging', 'Emerging', '#E3A93B'], ['None', 'No persistent signal', '#2A9488'], ['NA', 'Not computable', '#9fb0c0']];
+    const monitor = sum ? `<div class="card monitor">
+        <div class="row" style="justify-content:space-between;align-items:baseline"><h3 style="margin:0">Class monitor</h3>${sum.sample ? '<span class="chip">Example</span>' : '<span class="chip good">Your class</span>'}</div>
+        <p class="small" style="margin:4px 0 12px">${sum.sample ? 'A fictional class. Upload your class to see yours.' : esc(sum.fileName) + ' · ' + sum.n + ' students'}</p>
+        <div class="mon-bar" role="img" aria-label="Students by trajectory signal">${SIGS.map(([k, , c]) => sum.signals[k] ? `<i style="flex:${sum.signals[k]};background:${c}" title="${sum.signals[k]}"></i>` : '').join('')}</div>
+        <ul class="mon-list">${SIGS.map(([k, l, c]) => sum.signals[k] ? `<li><i style="background:${c}"></i>${esc(l)}<b>${sum.signals[k]}</b></li>` : '').join('')}</ul>
+        <div class="mon-q">${['Q1', 'Q2', 'Q3', 'Q4'].map(q => `<div><small>${q}</small><b>${sum.quadrants[q]}</b></div>`).join('')}</div>
+        <p class="small" style="margin:10px 0 0">${sum.mayExit} may meet exit criteria · ${sum.concerns3} with 3+ concerns</p>
+        <a class="btn ${sum.sample ? 'primary' : ''}" href="#/class" style="margin-top:12px;width:100%;justify-content:center">${sum.sample ? 'Upload your class' : 'Open my class →'}</a>
+      </div>` : '';
+    main.innerHTML = `<div class="home">
+      <section class="band hero-band slim">
+        <div class="band-in home-hero">
+          <div><div class="eyebrow light">Your DIALD workspace</div>
+            <h1>${first ? 'Welcome, ' + esc(first) + '.' : 'Welcome.'}</h1>
+            <p class="lead">From data to decision: read your learners’ language over time and choose the right support.</p></div>
+          <div class="row"><a class="pill gold" href="#/analyze">Learner Trajectory</a><a class="pill line" href="#/library">Library</a></div>
+        </div>
+      </section>
+      <div class="ticker" role="region" aria-label="Updates"><div class="ticker-in"><span class="ticker-tag">Updates</span>
+        <div class="ticker-win" aria-live="polite"><ul id="tick">${ups.map((u, i) => `<li class="${i === 0 ? 'on' : ''}">${esc(u)}</li>`).join('')}</ul></div>
+        <span class="ticker-dots">${ups.map((u, i) => `<button type="button" data-tick="${i}" aria-label="Update ${i + 1}" class="${i === 0 ? 'on' : ''}"></button>`).join('')}</span></div></div>
+      <section class="sec"><div class="sec-in home-grid">
+        <div class="card qx">
+          <div class="eyebrow">The Pattern Indicator</div>
+          <h2>Four oral–literacy profiles</h2>
+          <p class="small" style="margin-top:0">Choose a profile to see what it means and what DIALD looks at next.</p>
+          <div class="qx-wrap">
+            <div class="qx-grid" role="tablist" aria-label="Profiles">
+              <div class="qx-ax y" aria-hidden="true">Oral language →</div>
+              ${['Q1', 'Q2', 'Q3', 'Q4'].map(q => `<button type="button" role="tab" class="qx-cell ${q.toLowerCase()}" data-qx="${q}"><i>${q}</i><b>${esc(E.QUADRANTS[q].name)}</b><small>${esc(E.QUADRANTS[q].short)}</small></button>`).join('')}
+              <div class="qx-ax x" aria-hidden="true">Literacy →</div>
+            </div>
+            <div class="qx-detail" id="qx-detail" aria-live="polite"></div>
+          </div>
+        </div>
+        ${monitor}
+      </div></section>
+      <section class="sec tint"><div class="sec-in">
+        <div class="row" style="justify-content:space-between;align-items:flex-end;gap:12px">
+          <div><div class="eyebrow">Example</div><h2 style="margin-bottom:4px">How a class moves across levels</h2>
+          <p class="small" style="margin:0" id="mv-note"></p></div>
+          <div class="seg-ctl" role="tablist"><button type="button" data-mv="literacy" class="on">Literacy</button><button type="button" data-mv="oral">Oral language</button></div>
+        </div>
+        <div class="card" style="margin-top:14px"><div id="mv-chart"></div></div>
+      </div></section>
+      <section class="sec"><div class="sec-in how">
+        <div><div class="eyebrow">The DIALD cycle</div><h2>Five stages, one continuous cycle.</h2>
+          <p>Each stage feeds the next. When new evidence arrives, it returns to the Profile and the cycle starts again.</p>
+          <div class="actions" style="margin-top:18px">
+            <a class="action" href="#/analyze"><b>Learner Trajectory</b><span>Upload a class or analyze one learner.</span><i aria-hidden="true">→</i></a>
+            <a class="action gold" href="#/library"><b>Browse the library</b><span>Pathways and activities for levels 1–4.</span><i aria-hidden="true">→</i></a>
+            <a class="action navy" href="#/plans"><b>My plans</b><span id="plan-count">Reopen saved plans and record progress.</span><i aria-hidden="true">→</i></a>
+          </div></div>
+        <div class="land-cycle">${cycleHTML('ring')}</div>
+      </div></section>
+    </div>`;
+    bindCycle('ring');
+    // Updates: one line at a time; pauses on hover; no motion when the user prefers less motion.
+    const items = [...main.querySelectorAll('#tick li')], dots = [...main.querySelectorAll('[data-tick]')];
+    let ti = 0, timer = null;
+    const go = k => { ti = (k + items.length) % items.length; items.forEach((li, j) => li.classList.toggle('on', j === ti)); dots.forEach((d, j) => d.classList.toggle('on', j === ti)); };
+    const play = () => { clearInterval(timer); if (items.length > 1) timer = setInterval(() => { if (!document.body.contains(main.querySelector('#tick'))) return clearInterval(timer); go(ti + 1); }, 5000); };
+    dots.forEach(d => d.onclick = () => { go(Number(d.dataset.tick)); play(); });
+    const tk = main.querySelector('.ticker'); tk.onmouseenter = () => clearInterval(timer); tk.onmouseleave = play;
+    play();
+    // Interactive quadrants.
+    const showQ = q => {
+      const Q = E.QUADRANTS[q], I = QUAD_INFO[q];
+      main.querySelectorAll('[data-qx]').forEach(b => { b.classList.toggle('on', b.dataset.qx === q); b.setAttribute('aria-selected', b.dataset.qx === q); });
+      main.querySelector('#qx-detail').innerHTML = `<div class="qx-head"><i class="qx-pill ${q.toLowerCase()}">${q}</i><b>${esc(Q.name)}</b></div>
+        <p>${esc(I.what)}</p>
+        <div class="qx-ex"><span>Example</span>${['L', 'S', 'R', 'W'].map((d, k) => `<span class="lv ${I.ex[k] >= 3 ? 'hi' : 'lo'}"><small>${d}</small>${I.ex[k]}</span>`).join('')}</div>
+        <p><b>What DIALD looks at next:</b> ${esc(I.look)}</p><p><b>Support focus:</b> ${esc(I.focus)}</p>`;
+    };
+    main.querySelectorAll('[data-qx]').forEach(b => { b.onclick = () => showQ(b.dataset.qx); });
+    showQ('Q1');
+    // Class movement chart (stacked bars by year).
+    const LV = ['#c9dde6', '#9cc3d2', '#5fb3a8', '#2A9488', '#1B3A5C', '#0f2236'];
+    const drawMv = kind => {
+      main.querySelectorAll('[data-mv]').forEach(b => b.classList.toggle('on', b.dataset.mv === kind));
+      const dist = R ? R.levelDistribution(kind) : { years: [], sample: true };
+      main.querySelector('#mv-note').textContent = (dist.sample ? 'A fictional class. ' : 'Your class. ') + 'Each bar is one school year; each color is a level (the lower level of ' + (kind === 'oral' ? 'Listening and Speaking' : 'Reading and Writing') + ').';
+      const maxLv = Math.max(4, ...dist.years.map(y => y.counts.reduce((m, c, i) => (c ? i + 1 : m), 0)));
+      const el = main.querySelector('#mv-chart');
+      if (!dist.years.length) { el.innerHTML = '<p class="small">Not enough years to show.</p>'; return; }
+      el.innerHTML = `<div class="mv">${dist.years.map(y => `<div class="mv-row"><span class="mv-y">${esc(y.label)}</span><div class="mv-bar">${y.counts.slice(0, maxLv).map((c, i) => c ? `<i style="--w:${(c / y.n * 100).toFixed(1)}%;background:${LV[i]};color:${i >= 3 ? '#fff' : '#1B3A5C'}" title="Level ${i + 1}: ${c} of ${y.n}">${c / y.n >= 0.08 ? Math.round(c / y.n * 100) + '%' : ''}</i>` : '').join('')}</div><span class="mv-n">${y.n}</span></div>`).join('')}</div>
+        <div class="mv-legend">${LV.slice(0, maxLv).map((c, i) => `<span><i style="background:${c}"></i>Level ${i + 1}</span>`).join('')}<span class="small" style="margin-left:auto">Students per year →</span></div>`;
+      requestAnimationFrame(() => el.querySelectorAll('.mv-bar i').forEach(i => i.classList.add('in')));
+    };
+    main.querySelectorAll('[data-mv]').forEach(b => b.onclick = () => drawMv(b.dataset.mv));
+    drawMv('literacy');
+    if (sb) sb.from('plans').select('id', { count: 'exact', head: true }).then(({ count }) => {
+      const el = document.getElementById('plan-count');
+      if (el && typeof count === 'number') el.textContent = count ? `${count} saved plan${count === 1 ? '' : 's'}. Reopen them and record progress.` : 'No saved plans yet.';
+    });
+    if (window.DIALDHelp && profile) window.DIALDHelp.maybeTour();
+  }
+
   async function welcomeHome() {
     const first = profile && profile.full_name ? profile.full_name.split(' ')[0] : '';
     main.innerHTML = `<div>
@@ -414,11 +555,11 @@
   function analyzePage(q) {
     if (q.get('sample') === 'ana') {
       A = freshA(); A.inputs = JSON.parse(JSON.stringify(SAMPLE)); A.sample = true; persistA();
-      history.replaceState(null, '', '#/analyze'); setNav('analyze');
+      history.replaceState(null, '', '#/learner'); setNav('analyze');
     } else if (q.get('new') === '1') {
-      A = freshA(); persistA(); history.replaceState(null, '', '#/analyze');
+      A = freshA(); persistA(); history.replaceState(null, '', '#/learner');
     } else if (q.get('keep')) {
-      history.replaceState(null, '', '#/analyze');
+      history.replaceState(null, '', '#/learner');
     } else if (A.planId) {
       // leaving a saved plan: start fresh
       A = freshA(); persistA();
@@ -429,19 +570,21 @@
   function renderAnalyze() {
     const res = result();
     if (!res && A.stage > 0) A.stage = 0;
+    const editing = !res || !!A.editing;
     const title = A.planId ? (A.title || 'Plan ' + A.planNumber) : A.localName || 'Learner Trajectory';
     main.innerHTML = `<div class="page">
       <div class="row" style="justify-content:space-between">
         <div><div class="eyebrow">${A.planId ? 'Saved plan' : A.localName ? 'From your file' : 'DIALD analysis'}${A.sample ? ' · Sample case (fictional)' : ''}</div><h1 style="margin-bottom:4px">${esc(title)}${A.planId && A.localName ? ` <span class="local-name">${esc(A.localName)}</span>` : ''}</h1>
         <p class="small" style="margin:0">${A.localName ? '<span class="local-chip">🔒 Name shown only on this computer</span> Saving a plan stores levels and results, never the name.' : 'Levels only. No names, IDs, or details that identify a student.'}</p></div>
-        <div class="row">${A.planId ? '<a class="btn" href="#/plans">← My plans</a>' : A.localName ? '<a class="btn" href="#/">← My students</a>' : ''}<a class="btn" href="#/analyze?new=1">Start new</a>${!A.planId ? '<a class="btn" href="#/analyze?sample=ana">Load sample case</a>' : ''}</div>
+        <div class="row">${A.planId ? '<a class="btn" href="#/plans">← My plans</a>' : A.localName ? '<a class="btn" href="#/class">← My class</a>' : '<a class="btn" href="#/analyze">← Learner Trajectory</a>'}<a class="btn" href="#/learner?new=1">Start new</a>${!A.planId ? '<a class="btn" href="#/learner?sample=ana">Load sample case</a>' : ''}</div>
       </div>
-      <div class="stages" role="tablist">${STAGES.map((s, i) => `<button role="tab" data-stage="${i}" class="${A.stage === i ? 'on' : ''}" ${i > 0 && !res ? 'disabled' : ''} aria-selected="${A.stage === i}"><span>0${i + 1}</span>${s}</button>`).join('')}</div>
+      <div class="stages" role="tablist"><button role="tab" data-edit class="data-tab ${editing ? 'on' : ''}" aria-selected="${editing}"><span>✎</span>Data</button>${STAGES.map((s, i) => `<button role="tab" data-stage="${i}" class="${!editing && A.stage === i ? 'on' : ''}" ${!res || editing ? 'disabled' : ''} aria-selected="${!editing && A.stage === i}"><span>0${i + 1}</span>${s}</button>`).join('')}</div>
       <div id="stage"></div>
     </div>
     <div class="savebar" id="savebar"></div>`;
-    $$('[data-stage]').forEach(b => b.onclick = () => { if (A.stage === 0) readProfile(); A.stage = Number(b.dataset.stage); persistA(); renderAnalyze(); });
-    [profileStage, patternStage, focusStage, responseStage, adaptationStage][A.stage](res);
+    $$('[data-stage]').forEach(b => b.onclick = () => { A.stage = Number(b.dataset.stage); persistA(); renderAnalyze(); });
+    $('[data-edit]').onclick = () => { if (!editing) { A.editing = true; persistA(); renderAnalyze(); } };
+    if (editing) dataForm(res); else [profileStage, patternStage, focusStage, responseStage, adaptationStage][A.stage](res);
     renderSaveBar(res);
   }
 
@@ -452,11 +595,12 @@
     return `<select id="lv-${pi}-${d}" aria-label="${esc(A.inputs.periods[pi].label)} ${d}">${opts.join('')}</select>`;
   }
 
-  function profileStage() {
+  // Step before the five stages: the data form. The Profile is built from it.
+  function dataForm(res) {
     const I = A.inputs;
     $('#stage').innerHTML = `<div class="split">
       <div class="card">
-        <div class="eyebrow">01 · Profile</div>
+        <div class="eyebrow">Learner data</div>
         <h2>Language proficiency over time</h2>
         <p>Enter the domain levels from each annual assessment (for example, LAS Links levels 1–${C.maxLevel}), oldest first. Leave a row empty if it is not available.</p>
         <table class="levels"><thead><tr><th>Period</th>${DOMAINS.map(d => `<th>${cap(d)}</th>`).join('')}</tr></thead>
@@ -478,7 +622,7 @@
         <h3 style="margin-top:22px">Earlier targeted support</h3>
         <div class="fields"><div><label for="prior">Response to targeted intervention (beyond general ELD)</label><select id="prior">${opt([['none', 'None documented'], ['positive', 'Positive'], ['partial', 'Partial'], ['limited', 'Limited']], I.priorResponse)}</select></div></div>
         <p id="p-err" class="err" role="alert"></p>
-        <button class="btn primary" id="run">See the pattern →</button>
+        <div class="row"><button class="btn primary" id="run">Build the profile →</button>${res ? '<button class="btn ghost" id="cancel-edit" type="button">Back to the profile</button>' : ''}</div>
       </div>
       <div class="stack">
         <div class="privacy-note"><span aria-hidden="true">🔒</span><div><b>Do not enter student names or IDs.</b> This tool works with levels only. If you save a plan, it is named “Plan 1, Plan 2…” automatically.</div></div>
@@ -503,8 +647,9 @@
       const err = $('#p-err');
       if (!filled.length) { err.textContent = 'Enter the four domain levels for at least one year.'; return; }
       if (partial.length) { err.textContent = 'Complete all four domains for ' + partial.map(p => p.label).join(', ') + ', or clear that row.'; return; }
-      A.ran = true; A.dirty = true; A.stage = 1; persistA(); renderAnalyze();
+      A.ran = true; A.dirty = true; A.editing = false; A.stage = 0; persistA(); renderAnalyze();
     };
+    const ce = $('#cancel-edit'); if (ce) ce.onclick = () => { A.editing = false; persistA(); renderAnalyze(); };
     main.querySelectorAll('#stage select, #stage input').forEach(el => el.addEventListener('change', () => { readProfile(); A.dirty = true; persistA(); renderSaveBar(result()); }));
   }
   // State rules: the plan's own choice, else the teacher's profile state.
@@ -524,6 +669,95 @@
     I.state = $('#st-rules').value;
     // drop empty rows at the end only when analysing
     I.periods = I.periods.filter((p, i) => i < 1 || DOMAINS.some(d => p[d]) || i < I.periods.length);
+  }
+
+  // 01 · Profile: what the data says about the learner, in plain words.
+  function profileStage(res) {
+    const I = A.inputs, rows = res.rows, last = rows[rows.length - 1], L = last.levels, first = rows[0];
+    const DN = { listening: 'Listening', speaking: 'Speaking', reading: 'Reading', writing: 'Writing' };
+    const dirText = { oral: 'Oral language (listening and speaking) is ahead of literacy (reading and writing).', literacy: 'Literacy (reading and writing) is ahead of oral language (listening and speaking).', even: 'All four domains are at the same level.', mixed: 'The domains are mixed: neither oral language nor literacy is clearly ahead.' }[last.direction];
+    const below = DOMAINS.filter(d => L[d] < res.high), st = res.state || {};
+    const has = k => rows.some(r => r.levels[k] != null && r.levels[k] !== '');
+    const extra = [rows.some(r => r.levels.scale) ? 'scale scores' : '', has('overall') ? 'overall level' : '', has('ela') ? 'state ELA test' : '', has('bench') ? 'benchmark' : ''].filter(Boolean);
+    const cell = (v, prev) => { const up = prev != null && v > prev, dn = prev != null && v < prev; return `<td class="lvc l${Math.min(6, Math.floor(v))}">${v}${up ? ' <em class="up">▲</em>' : dn ? ' <em class="dn">▼</em>' : ''}</td>`; };
+    $('#stage').innerHTML = `<div class="split">
+      <div class="stack">
+        <div class="card">
+          <div class="eyebrow">01 · Profile</div>
+          <h2>Learner profile</h2>
+          <div class="row" style="margin:4px 0 12px;gap:6px">
+            ${I.grade ? `<span class="chip">Grades ${esc(I.grade)}</span>` : ''}${I.years !== '' && I.years != null ? `<span class="chip">${esc(I.years)} years in services</span>` : ''}${I.test ? `<span class="chip">${esc(I.test)}</span>` : ''}<span class="chip">Rules: ${esc(st.code ? st.name : 'General')}</span>
+          </div>
+          <ul class="profile-list">
+            <li><b>${rows.length} year${rows.length > 1 ? 's' : ''} of results</b>${rows.length > 1 ? ' (' + esc(first.label) + ' to ' + esc(last.label) + ')' : ''}.</li>
+            <li><b>Latest (${esc(last.label)}):</b> ${DOMAINS.map(d => DN[d] + ' ' + L[d]).join(' · ')}.</li>
+            <li>${esc(dirText)}</li>
+            <li>${below.length ? 'Below the reference level (' + res.high + '): <b>' + below.map(d => DN[d]).join(', ') + '</b>.' : 'All four domains are at or above the reference level (' + res.high + ').'}</li>
+            <li>${extra.length ? 'Other evidence in the data: ' + extra.join(', ') + '.' : 'Only domain levels were entered. Scale scores, the state ELA test, or a benchmark would make the next stages stronger.'}</li>
+          </ul>
+          <h3>Levels by year</h3>
+          <table class="tbl lv-tbl"><thead><tr><th>Year</th>${DOMAINS.map(d => `<th>${DN[d]}</th>`).join('')}</tr></thead>
+            <tbody>${rows.map((r, i) => `<tr><td>${esc(r.label)}</td>${DOMAINS.map(d => cell(r.levels[d], i ? rows[i - 1].levels[d] : null)).join('')}</tr>`).join('')}</tbody></table>
+          <p class="small">▲ ▼ = level went up or down from the year before. The Profile is a description, not a judgment.</p>
+          <div class="row" style="margin-top:14px"><button class="btn primary" id="go-pattern">See the pattern →</button><button class="btn" id="edit-data" type="button">✎ Edit the data</button></div>
+        </div>
+      </div>
+      <div class="stack">
+        <div class="card"><h3>Four-quadrant matrix</h3>${matrixHTML(res)}<p class="small">${esc(res.quadrant.note)}</p></div>
+        <div class="card"><h3>What happens next</h3><p class="small" style="margin:0">The <b>Pattern Indicator</b> reads these years together: the quadrant over time, growth, the trajectory signal, and the evidence from your state’s rules.</p></div>
+      </div></div>`;
+    $('#go-pattern').onclick = () => { A.stage = 1; persistA(); renderAnalyze(); };
+    $('#edit-data').onclick = () => { A.editing = true; persistA(); renderAnalyze(); };
+  }
+
+  /* ---------- Explain with AI (Cloudflare Worker; 20 uses per teacher per day) ---------- */
+  function aiPayload(res) {
+    const I = A.inputs;
+    return {
+      grade: I.grade || '', years: I.years === '' || I.years == null ? null : Number(I.years), high: res.high,
+      state: res.state && res.state.code ? res.state.name : '', test: I.test || '',
+      rows: res.rows.map((r, i) => {
+        const o = { label: (String(r.label).match(/(19|20)\d{2}(\s*[-–/]\s*\d{2,4})?/) || ['Year ' + (i + 1)])[0] };
+        DOMAINS.forEach(d => { o[d] = r.levels[d]; });
+        if (r.levels.ela != null) o.ela = r.levels.ela; if (r.levels.bench != null) o.bench = r.levels.bench;
+        return o;
+      }),
+      quadrant: res.quadrant ? res.quadrant.id + ' ' + res.quadrant.name : '', signal: res.signal.label,
+      evidence: res.signal.evidence, criteria: res.criteria.map(c => c.label + ': ' + c.text),
+      exit: res.signal.flags.mayExit ? 'The latest results meet the exit criteria. ' + (res.signal.flags.exitText || '') : ''
+    };
+  }
+  function aiFormat(t) {
+    const H = ['What the data shows', 'What to look at next', 'Questions for your team'];
+    let html = '', list = false;
+    String(t).split(/\n+/).map(x => x.trim().replace(/^#+\s*|\*\*/g, '')).filter(Boolean).forEach(line => {
+      const h = H.find(x => line.toLowerCase().replace(/:$/, '') === x.toLowerCase());
+      if (h) { if (list) { html += '</ul>'; list = false; } html += `<h4>${esc(h)}</h4>`; return; }
+      if (/^[-•*]\s+|^\d+[.)]\s+/.test(line)) { if (!list) { html += '<ul>'; list = true; } html += `<li>${esc(line.replace(/^[-•*]\s+|^\d+[.)]\s+/, ''))}</li>`; return; }
+      if (list) { html += '</ul>'; list = false; }
+      html += `<p>${esc(line)}</p>`;
+    });
+    return html + (list ? '</ul>' : '');
+  }
+  function bindAI(res) {
+    const go = $('#ai-go'); if (!go) return;
+    const left = $('#ai-left'), out = $('#ai-out');
+    if (sb) sb.rpc('ai_credits_left').then(({ data }) => { if (typeof data === 'number' && left) left.textContent = data + ' of 20 left today'; });
+    go.onclick = async () => {
+      go.disabled = true; go.textContent = 'Writing…'; out.innerHTML = '<p class="small">This takes a few seconds.</p>';
+      try {
+        const { data: s } = await sb.auth.getSession(); const token = s && s.session && s.session.access_token;
+        if (!token) throw new Error('Please sign in again.');
+        const r = await fetch(C.aiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ task: 'explain', data: aiPayload(res) }) });
+        const j = await r.json().catch(() => ({}));
+        if (r.status === 429) throw new Error('You used your 20 AI explanations for today. Come back tomorrow.');
+        if (!r.ok) throw new Error(j.error || 'The AI is not available right now.');
+        out.innerHTML = `<div class="ai-text">${aiFormat(j.text)}</div><p class="small ai-note">Written by AI from the data above. Check it against what you know about the learner; it is not a diagnosis.</p>`;
+        if (left && typeof j.left === 'number') left.textContent = j.left + ' of 20 left today';
+        go.textContent = 'Explain again';
+      } catch (e) { out.innerHTML = `<p class="err">${esc(e.message || 'Something went wrong.')}</p>`; go.textContent = 'Explain this profile'; }
+      go.disabled = false;
+    };
   }
 
   function stateCard(st) {
@@ -557,6 +791,12 @@
           ${r.flags.ctSkipped ? `<div class="flag">Connecticut growth targets were not applied: they need all four scale scores and the grade for each year. DIALD used levels and any scale-score growth instead.</div>` : ''}
           <p class="small">${r.model === 'CT' ? 'Provisional and transparent: a composite is flagged when it grows less than ' + r.flags.growth.ptaFlag + '% of its Connecticut target (or drops below level 4); two years in a row make the signal persistent. The state targets are ambitious by design, so missing a target alone is not a flag.' : `Provisional and transparent: a domain is flagged when it is below level ${res.high} and did not grow; two intervals in a row make the signal persistent.`} These parameters are being validated. This is not a probability or a diagnosis. If the learner has an IEP, review language and learning needs together with your MTSS team.</p>
         </div>
+        ${C.aiUrl && user ? `<div class="card ai-card" id="ai-card">
+          <div class="row" style="justify-content:space-between;align-items:center;gap:10px"><h3 style="margin:0">✨ Explain with AI</h3><span class="small" id="ai-left"></span></div>
+          <p class="small" style="margin:6px 0 12px">A short explanation in plain English and three questions for your team. DIALD sends only levels and results, never names.</p>
+          <button class="btn primary" type="button" id="ai-go">Explain this profile</button>
+          <div id="ai-out" aria-live="polite"></div>
+        </div>` : ''}
         <div class="card">
           <h3>Converging evidence</h3>
           <p class="small" style="margin-top:0">DIALD reads four kinds of evidence side by side. It counts concerns; it does not weight them, because the combination is still being validated.</p>
@@ -581,6 +821,7 @@
         <button class="btn primary" id="go-focus">See instructional focus →</button>
       </div></div>`;
     $('#go-focus').onclick = () => { A.stage = 2; persistA(); renderAnalyze(); };
+    bindAI(res);
   }
 
   function levelFor(res, a) {
@@ -666,7 +907,7 @@
       </div>`; }).join('')}
       <div class="card"><h3>Back to the Profile</h3><p>When the next assessment results arrive, add them as a new year. DIALD will reassess the pattern and the trajectory signal.</p>
         <button class="btn" id="next-cycle">+ Add next year’s levels</button></div>`;
-    $('#next-cycle').onclick = () => { A.inputs.periods.push(blankPeriod(A.inputs.periods.length + 1)); A.stage = 0; A.dirty = true; persistA(); renderAnalyze(); };
+    $('#next-cycle').onclick = () => { A.inputs.periods.push(blankPeriod(A.inputs.periods.length + 1)); A.stage = 0; A.editing = true; A.dirty = true; persistA(); renderAnalyze(); };
   }
 
   /* ---------- saving ---------- */
@@ -732,7 +973,7 @@
     const { data, error } = await sb.from('plans').select('*').eq('id', id).single();
     if (error || !data) { main.innerHTML = '<div class="page"><div class="card"><p>This plan was not found.</p><a class="btn" href="#/plans">My plans</a></div></div>'; return; }
     const names = window.DIALDRoster ? window.DIALDRoster.planNames() : {};
-    A = { planId: data.id, planNumber: data.plan_number, title: data.title || '', localName: names[data.id] || '', inputs: data.inputs, ran: true, stage: 1, selected: data.pathway_ids || [], selectedTouched: true, progress: data.progress || [], dirty: false };
+    A = { planId: data.id, planNumber: data.plan_number, title: data.title || '', localName: names[data.id] || '', inputs: data.inputs, ran: true, stage: 0, selected: data.pathway_ids || [], selectedTouched: true, progress: data.progress || [], dirty: false };
     persistA(); renderAnalyze();
   }
 
@@ -761,7 +1002,7 @@
     const rows = data || [];
     const localNames = window.DIALDRoster ? window.DIALDRoster.planNames() : {};
     main.innerHTML = `<div class="page">
-      <div class="row" style="justify-content:space-between"><div><div class="eyebrow">Your workspace</div><h1>My plans</h1></div><a class="btn primary" href="#/analyze?new=1">+ New analysis</a></div>
+      <div class="row" style="justify-content:space-between"><div><div class="eyebrow">Your workspace</div><h1>My plans</h1></div><a class="btn primary" href="#/analyze">+ New analysis</a></div>
       ${error ? `<div class="card"><p class="err">Could not load plans: ${esc(error.message)}</p></div>` : ''}
       <div class="card">${rows.length ? `<table class="tbl"><thead><tr><th>Plan</th><th>Quadrant</th><th>Signal</th><th>Pathways</th><th>Response</th><th>Updated</th><th></th></tr></thead><tbody>
         ${rows.map(r => { const resp = (r.progress || []).map(e => E.classifyResponse(e).level); return `<tr>
@@ -772,7 +1013,7 @@
           <td>${resp.length ? resp.map(x => `<span class="badge ${x}" style="font-size:12px;padding:3px 8px">${x}</span>`).join(' ') : '—'}</td>
           <td class="small">${new Date(r.updated_at).toLocaleDateString()}</td>
           <td><button class="btn ghost danger" data-del="${r.id}" data-n="${r.plan_number}">Delete</button></td></tr>`; }).join('')}</tbody></table>`
-        : '<p>No saved plans yet. Analyze a learner in <a href="#/analyze">Learner Trajectory</a> or open a student from your <a href="#/">Dashboard</a>, and choose “Save as a plan”.</p>'}</div>
+        : '<p>No saved plans yet. Analyze a learner or a class in <a href="#/analyze">Learner Trajectory</a>, and choose “Save as a plan”.</p>'}</div>
       <p class="small">Plans store levels, results, and the pathways you chose. Never student names or IDs. ${Object.keys(localNames).length ? '🔒 Names next to a plan are kept only on this computer. <a href="#" id="keysheet">Download your key sheet</a> to keep a copy. ' : ''}Account options are in <a href="#/profile">Profile &amp; settings</a>.</p>
     </div>`;
     $$('[data-del]').forEach(b => b.onclick = async () => {
@@ -1031,7 +1272,8 @@
       <h2>What we store</h2><ul><li>Your email address and password (managed securely by our authentication provider), or your Google sign-in.</li><li>Your teacher profile: your name, school district, state, the grades you teach, and your role.</li><li>Plans you choose to save: proficiency levels and scale scores, test year labels, grade band and grade for each year, years of services, general academic and response categories, the pathways you selected, and progress numbers.</li></ul>
       <h2>What we do not store</h2><ul><li>Student names, IDs, dates of birth, schools, or any other information that identifies a student.</li><li>Free-text notes about students. The tool has no free-text fields for student information.</li></ul>
       <p>Please do not enter identifying information anywhere on this site.</p>
-      <h2>Files you analyze</h2><p>When you use <b>Analyze my file</b>, your file is read <b>inside your browser, on your computer</b>. It is not uploaded, and student names and IDs are never sent to our servers. If you choose “Keep this file on this computer,” it is kept in your browser’s storage until you clear it. Otherwise it is forgotten when you close the tab.</p>
+      <h2>Explain with AI</h2><p>If you choose <b>Explain with AI</b>, DIALD sends the learner’s levels, test year labels, grade band, years of services, and results — never names or IDs — to Cloudflare Workers AI, which writes the explanation. Cloudflare does not use this data to train its models. Each teacher can use it 20 times a day; DIALD stores only how many times you used it today.</p>
+            <h2>Files you analyze</h2><p>When you use <b>Analyze my file</b>, your file is read <b>inside your browser, on your computer</b>. It is not uploaded, and student names and IDs are never sent to our servers. If you choose “Keep this file on this computer,” it is kept in your browser’s storage until you clear it. Otherwise it is forgotten when you close the tab.</p>
       <p>If you save a plan for a student from your file, only the allowed fields are saved: levels, scale scores, test year labels, grade band and grade for each year, years of services, results, chosen pathways, and progress numbers. The student’s name stays on your computer, linked to the plan, so you can recognize it. Our database also rejects any field that is not on this list.</p>
       <h2>How we use data</h2><p>To run the site: to let you sign in, save, and reopen your plans. Your teacher profile also helps the author understand where and how DIALD is used (for example, how many teachers use it by state, grade, or role). Results are reported only in summary form, never by name. We do not sell, rent, or share your data, and we do not use it for advertising.</p>
       <h2>Who can see your plans</h2><p>Only you. Database rules allow each account to read and change its own plans only.</p>
@@ -1075,7 +1317,7 @@
           setTimeout(async () => {
             await loadProfile(); renderAcct();
             const p = parseHash().parts[0] || '';
-            if (!user || ['plans', 'plan', 'analyze', 'pathway', 'login', 'profile'].includes(p) || (profileLoaded && !profile)) route();
+            if (!user || ['plans', 'plan', 'analyze', 'learner', 'class', 'pathway', 'login', 'profile'].includes(p) || (profileLoaded && !profile)) route();
           }, 0);
         }
       });

@@ -119,8 +119,8 @@
   /* ---------- first-visit tour ---------- */
   const STEPS = [
     { sel: null, title: 'Welcome to DIALD', text: 'This short tour shows where to find each part of the platform. It takes about one minute.' },
-    { sel: '[data-nav="home"]', title: 'Dashboard', text: 'Load your class file (or try the sample class). See each student’s profile, trajectory signal, and the evidence behind it. Names stay on your computer.' },
-    { sel: '[data-nav="analyze"]', title: 'Learner Trajectory', text: 'Look at one learner in five steps: Profile, Pattern Indicator, Instructional Focus, Response, and Adaptation.' },
+    { sel: '[data-nav="home"]', title: 'Dashboard', text: 'Your home page: updates, a monitor of your class, the four profiles, and the DIALD cycle.' },
+    { sel: '[data-nav="analyze"]', title: 'Learner Trajectory', text: 'Upload a whole class with the Excel template, or enter one learner’s data. Then follow the five stages: Profile, Pattern Indicator, Instructional Focus, Response, and Adaptation.' },
     { sel: '[data-nav="library"]', title: 'Library', text: 'Lesson-plan pathways and activities matched to each profile. The library is still being built.' },
     { sel: '[data-nav="plans"]', title: 'My plans', text: 'Plans you saved. Open one to record the learner’s progress and see how they responded.' },
     { sel: '#acct-btn', title: 'Profile & settings', text: 'Your state is saved here. DIALD uses it to choose the exit criteria, LTEL time, and state tests it reads.' },
@@ -184,20 +184,21 @@
     ['start', 'Getting started', `
       <ol class="steps">
         <li><b>Create a free account</b> and complete your profile. Choose your <b>state</b>: DIALD uses it to pick the rules for your state.</li>
-        <li>Go to <b>Dashboard</b> and load your class file, or choose <b>Try the sample class</b> to explore with fictional students.</li>
+        <li>Go to <b>Learner Trajectory</b>. Choose <b>A whole class</b> to upload your class file (download the Excel template first), or <b>One learner</b> to enter one learner’s data.</li>
         <li>Open a student to see the <b>trajectory signal</b>, the evidence, and the next steps.</li>
         <li>Choose support from the <b>Library</b>, save a plan, and later record the learner’s progress.</li>
       </ol>
       <p>DIALD is a research prototype. Its rules are provisional and are being validated. Results are for educator review, not diagnoses.</p>`],
     ['file', 'Load a class file', `
-      <p>Export your language test results from your data system (for example, LAS Links, ACCESS, ELPAC, or NYSESLAT) as Excel or CSV. One row per student per year works best. Files with each year in separate columns also work.</p>
+      <p>Export your language test results from your data system (for example, LAS Links, ACCESS, ELPAC, or NYSESLAT) as Excel or CSV. The template has one row per student and a block of columns for each school year (the year is in the column name, as in Ellevation or DRC longitudinal exports). Files with one row per student per year also work.</p>
       <ul>
-        <li><b>Required:</b> a name or ID column, and the four domain levels (Listening, Speaking, Reading, Writing).</li>
+        <li><b>Required:</b> a name or ID column, and the four domain levels (Listening, Speaking, Reading, Writing) for each year.</li>
         <li><b>Helpful:</b> school year, grade, years in ELD services, overall level, literacy composite, scale scores, state ELA test level (for example SBA, MCAS, CAASPP, NYS ELA), and a benchmark result (for example i-Ready, Star, MAP, DIBELS).</li>
       </ul>
-      <p>DIALD matches the columns by their names. In <b>Check the columns</b>, fix any match that is wrong, choose your <b>state rules</b>, and choose <b>Analyze</b>. You can download a template from the Dashboard.</p>
+      <p>Start from a template: <a href="DIALD-template-basic.xlsx" download>Basic</a> (language test levels and years of services only) or <a href="DIALD-template-complete.xlsx" download>Complete</a> (adds scale scores, overall and literacy levels, state ELA test, and benchmark). Fill only the columns you have: DIALD uses what is there and tells you what is missing. Then go to <b>Learner Trajectory → A whole class</b> and upload your file. DIALD matches the columns by their names. In <b>Check the columns</b>, fix any match that is wrong, choose your <b>state rules</b>, and choose <b>Analyze</b>.</p>
       <p>🔒 Your file is read in your browser. Student names and IDs never leave your computer.</p>`],
     ['dashboard', 'Read the dashboard', `
+      <p>Your <b>Dashboard</b> is your home page: updates, a <b>class monitor</b> (your class, or an example until you upload one), the four profiles, how a class moves across levels, and the DIALD cycle. After you upload a class in Learner Trajectory, <b>My class</b> shows:</p>
       <ul>
         <li><b>Tiles:</b> how many students, how many are oral dominant, how many show a persistent signal, and how many may meet your state’s exit criteria.</li>
         <li><b>Quadrants:</b> each dot is a student. Up = stronger oral language (Listening and Speaking); right = stronger literacy (Reading and Writing). Arrows show last year’s position. A red ring marks a persistent signal.</li>
@@ -220,7 +221,7 @@
       <p>Your profile state is used by default. You can change it when you load a file or in the Reference level card of Learner Trajectory.</p>`],
     ['trajectory', 'Learner Trajectory (one learner)', `
       <ol class="steps">
-        <li><b>Profile:</b> enter each year’s domain levels (levels only, never names).</li>
+        <li><b>Data, then Profile:</b> enter each year’s domain levels (levels only, never names). DIALD builds the learner’s profile from them; choose <b>Edit the data</b> to change anything.</li>
         <li><b>Pattern Indicator:</b> the quadrant, the trajectory signal, the evidence, and the rules used.</li>
         <li><b>Instructional Focus:</b> pathways from the Library that match the learner’s priorities.</li>
         <li><b>Response:</b> record the baseline, the goal, and the current result.</li>

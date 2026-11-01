@@ -181,28 +181,45 @@
   // Turn those into one row per year so the rest of DIALD reads them the same way.
   const YEAR_RE = /((?:19|20)\d{2})(?:\s*[-–/]\s*(?:(?:19|20)?\d{2}))?|\bSY\s?(\d{2})(?:\s*[-–/]\s*\d{2})?/i;
   function widen(raw) {
+    const BENCH_RE = /benchmark|iready|nwea|mapgrowth|mapreading|starreading|^star|fastbridge|dibels|aimsweb|acadience|percentile/;
+    const ELA_RE = /^ela|stateela|sba|smarterbalanced|caaspp|mcas|nysela|staar/;
     const info = raw.headers.map((h, i) => {
       const m = String(h).match(YEAR_RE); if (!m) return null;
       const rest = norm(String(h).replace(YEAR_RE, ' '));
-      const d = DOMAINS.find(x => rest.includes(DP[x]));
-      const isScale = /scale|ss$|ssc/.test(rest), isRaw = /raw/.test(rest);
-      const isOverall = !d && /overall|composite/.test(rest);
-      if ((!d && !isOverall) || isRaw) return null;
       const yr = m[1] ? m[0].replace(/\s+/g, '') : '20' + m[2];
+      const isScale = /scale|ss$|ssc/.test(rest), isRaw = /raw/.test(rest);
+      if (isRaw) return null;
+      // Other evidence first, so "Reading Benchmark" is not read as a Reading level.
+      if (BENCH_RE.test(rest)) return /scale|rit$|lexile/.test(rest) ? null : { i, yr, kind: 'Benchmark' };
+      if (ELA_RE.test(rest)) return isScale ? null : { i, yr, kind: 'State ELA Level' };
+      if (/literacy/.test(rest)) return isScale ? null : { i, yr, kind: 'Literacy PL' };
+      if (/^grade/.test(rest) && !/score|level/.test(rest)) return { i, yr, kind: 'Grade' };
+      const d = DOMAINS.find(x => rest.includes(DP[x]));
+      const isOverall = !d && /overall|composite/.test(rest);
+      if (!d && !isOverall) return null;
       return { i, yr, kind: isOverall ? (isScale ? null : 'Overall Level') : DNAME[d] + (isScale ? ' Scale Score' : ' Level') };
     });
     const years = [...new Set(info.filter(x => x && x.kind).map(x => x.yr))];
-    if (years.length < 1 || info.filter(x => x && x.kind && /Level$/.test(x.kind) && x.kind !== 'Overall Level').length < 4) return raw;
+    const domainKinds = DOMAINS.map(d => DNAME[d] + ' Level');
+    if (years.length < 1 || info.filter(x => x && domainKinds.includes(x.kind)).length < 4) return raw;
     const wideIdx = new Set(info.filter(Boolean).map(x => x.i));
     const base = raw.headers.map((h, i) => i).filter(i => !wideIdx.has(i));
     const kinds = [...new Set(info.filter(x => x && x.kind).map(x => x.kind))];
     const headers = base.map(i => raw.headers[i]).concat(['Test Year'], kinds);
     const sortYear = y => Number((y.match(/(19|20)\d{2}/) || ['0'])[0]);
     years.sort((a, b) => sortYear(a) - sortYear(b));
+    // One "Grade" column (the current grade) becomes each year's grade, counted back from the latest year.
+    const gradeCol = kinds.includes('Grade') ? -1 : base.findIndex(i => { const h = norm(raw.headers[i]); return /grade/.test(h) && !/score|level|listen|speak|read|writ/.test(h); });
     const body = [];
-    raw.body.forEach(r => years.forEach(y => {
+    raw.body.forEach(r => years.forEach((y, yi) => {
       const vals = kinds.map(k => { const c = info.find(x => x && x.yr === y && x.kind === k); return c ? r[c.i] : ''; });
-      if (vals.some(v => String(v).trim() !== '')) body.push(base.map(i => r[i]).concat([y], vals));
+      if (!vals.some((v, k) => kinds[k] !== 'Grade' && String(v).trim() !== '')) return;
+      const b = base.map(i => r[i]);
+      if (gradeCol >= 0) {
+        const g = gradeOf(b[gradeCol]), back = years.length - 1 - yi;
+        if (g !== '') { const n = (g === 'K' ? 0 : Number(g)) - back; b[gradeCol] = n < 0 ? '' : n === 0 ? 'K' : String(n); }
+      }
+      body.push(b.concat([y], vals));
     }));
     return { fileName: raw.fileName, headers, body, widened: years.length };
   }
@@ -296,9 +313,14 @@
     return { fileName: 'DIALD sample class (fictional).xlsx', headers, body };
   }
   function templateCSV() {
-    const h = ['Student Name', 'Student ID', 'School Year', 'Test', 'Grade', 'Group', 'Years in ELD', 'Listening PL', 'Speaking PL', 'Reading PL', 'Writing PL', 'Listening Scale Score', 'Speaking Scale Score', 'Reading Scale Score', 'Writing Scale Score', 'Overall PL', 'Literacy PL', 'State ELA Level', 'Benchmark'];
-    const ex = ['Example Student', 'A123', '2025-26', 'LAS Links', '7', 'Period 2', '4', '3', '3', '2', '2', '520', '515', '470', '465', '3', '2', '2', 'Below'];
-    const blob = new Blob(['﻿' + h.join(',') + '\n' + ex.join(',') + '\n'], { type: 'text/csv;charset=utf-8' });
+    const years = ['2023-24', '2024-25', '2025-26'];
+    const per = ['Listening PL', 'Speaking PL', 'Reading PL', 'Writing PL', 'Overall PL', 'Literacy PL', 'Listening Scale Score', 'Speaking Scale Score', 'Reading Scale Score', 'Writing Scale Score', 'State ELA Level', 'Benchmark'];
+    const h = ['Student Name', 'Student ID', 'Grade', 'Group', 'Years in ELD', 'Test'].concat(...years.map(y => per.map(c => c + ' ' + y)));
+    const ex = ['Example Student', 'A123', '8', 'Period 2', '5', 'LAS Links',
+      '3', '3', '2', '2', '2', '', '488', '492', '470', '466', 'Not Met', 'Below',
+      '4', '3', '2', '2', '3', '', '521', '509', '483', '479', 'Not Met', 'Below',
+      '4', '4', '2', '3', '3', '', '535', '531', '489', '509', 'Nearly Met', 'At Benchmark'];
+    const blob = new Blob(['\ufeff' + h.join(',') + '\n' + ex.join(',') + '\n'], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'DIALD-template.csv';
     document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
   }
@@ -379,7 +401,7 @@
     const opt = (arr, cur, all) => `<option value="">${all}</option>` + arr.map(v => `<option ${v === cur ? 'selected' : ''} value="${esc(v)}">${esc(v)}</option>`).join('');
     main.innerHTML = `<div class="dash">
       <div class="dash-head"><div class="dash-in">
-        <div><div class="eyebrow">${first ? 'Welcome back, ' + esc(first) : 'Your dashboard'}</div><h1>My students</h1>
+        <div><a class="back-link" href="#/analyze">← Learner Trajectory</a><div class="eyebrow">Learner Trajectory · A whole class</div><h1>My class</h1>
           <p class="small"><span class="local-chip">🔒 On this computer only</span> ${esc(data.fileName)} · ${data.students.length} students${data.skipped ? ' · ' + data.skipped + ' rows skipped (no levels)' : ''} · <span class="chip" title="${esc(stateNote(data.state || ''))}">Rules: ${esc(S.get(data.state || '').code ? S.get(data.state).name : 'General')}</span></p></div>
         <div class="row"><button class="btn" id="r-new" type="button">Load another file</button><button class="btn ghost danger" id="r-clear" type="button">Clear file</button></div>
       </div></div>
@@ -451,19 +473,28 @@
 
   function emptyView(main, ctx) {
     const { esc } = ctx;
-    const first = ctx.profile && ctx.profile.full_name ? ctx.profile.full_name.split(' ')[0] : '';
     main.innerHTML = `<div class="dash">
-      <div class="dash-head"><div class="dash-in"><div><div class="eyebrow">Your dashboard</div><h1>${first ? 'Welcome, ' + esc(first) + '.' : 'Welcome.'}</h1>
-        <p class="small">Analyze a whole class from your language test export, or one learner at a time.</p></div></div></div>
+      <div class="dash-head"><div class="dash-in"><div><a class="back-link" href="#/analyze">← Learner Trajectory</a><div class="eyebrow">Learner Trajectory · A whole class</div><h1>Upload a class</h1>
+        <p class="small">See every student’s profile and trajectory signal from one file.</p></div></div></div>
       <div class="dash-in">
+        <ol class="up-steps">
+          <li><b>Get a template</b> (with instructions and examples), or use your own export from your data system:
+            <div class="tpl-pick">
+              <a class="tpl-card" href="DIALD-template-basic.xlsx" download><b>Basic</b><span>Language test levels and years of services only. A quick start.</span></a>
+              <a class="tpl-card" href="DIALD-template-complete.xlsx" download><b>Complete</b><span>Adds scale scores, overall and literacy levels, state ELA test, and benchmark for the full analysis.</span></a>
+            </div>
+            <span class="small">Fill only the columns you have: empty columns are fine. <button class="linkish" id="tpl" type="button">CSV version</button></span></li>
+          <li><b>Add your students.</b> One row per student, with a block of columns for each school year (the year goes in the column name, as in Ellevation or DRC exports). Extra columns (scale scores, overall level, state ELA test, benchmark) make the analysis stronger.</li>
+          <li><b>Upload the file below</b> and check that DIALD matched each column.</li>
+        </ol>
         <div class="dash-grid">
           <div class="card drop" id="drop" tabindex="0" role="button" aria-label="Choose a file to analyze">
             <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#2A9488" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M12 17v-6M9.5 13.5 12 11l2.5 2.5"/></svg>
-            <h2>Analyze my file</h2>
-            <p>Drag your Excel or CSV export here, or <b>choose a file</b>. One row per student per year, with the four domain levels.</p>
+            <h2>Upload your class file</h2>
+            <p>Drag your Excel or CSV file here, or <b>choose a file</b>.</p>
             <input type="file" id="file" accept=".xlsx,.xls,.csv" hidden>
             <p id="drop-msg" class="err" role="alert"></p>
-            <div class="row" style="justify-content:center"><button class="btn" id="sample" type="button">Try a sample class</button><button class="btn ghost" id="tpl" type="button">Download a template</button></div>
+            <div class="row" style="justify-content:center"><button class="btn" id="sample" type="button">Try a sample class</button></div>
           </div>
           <div class="card">
             <h3>🔒 Your file stays on this computer</h3>
@@ -473,14 +504,8 @@
               <li>If you save a plan, only levels, results, and chosen pathways are saved.</li>
               <li>Next time, load the same file again (or a newer export).</li>
             </ul>
-            <p class="small">Columns are found by their names, in any order. Scale scores are optional; they show growth inside a level.</p>
+            <p class="small">Columns are found by their names, in any order. Need help? See <a href="#/help?t=file">Load a class file</a>.</p>
           </div>
-        </div>
-        <h2 class="dash-h2">Or start here</h2>
-        <div class="actions three">
-          <a class="action" href="#/analyze?new=1"><b>Learner Trajectory</b><span>Analyze one learner by hand and get matching pathways.</span><i aria-hidden="true">→</i></a>
-          <a class="action gold" href="#/library"><b>Browse the library</b><span>Pathways and activities for levels 1–4.</span><i aria-hidden="true">→</i></a>
-          <a class="action navy" href="#/plans"><b>My plans</b><span id="plan-count">Reopen saved plans and record progress.</span><i aria-hidden="true">→</i></a>
         </div>
       </div></div>`;
     const drop = main.querySelector('#drop'), input = main.querySelector('#file'), msg = main.querySelector('#drop-msg');
@@ -497,7 +522,6 @@
     drop.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) take(f); });
     main.querySelector('#sample').onclick = () => startMapping(sampleRaw(), main, ctx);
     main.querySelector('#tpl').onclick = templateCSV;
-    if (ctx.afterEmpty) ctx.afterEmpty();
     if (ctx.afterRender) ctx.afterRender();
   }
 
@@ -571,8 +595,37 @@
     };
   }
 
+  // Summaries for the home page: the teacher's class if a file is loaded, otherwise the fictional sample.
+  function classData() {
+    if (data && data.students.length) return { d: data, sample: false };
+    const raw = sampleRaw(); return { d: Object.assign(build(raw, detect(raw.headers), 3), { state: 'CT', horizon: 5 }), sample: true };
+  }
+  function summary() {
+    const { d, sample } = classData(), high = d.high || 3, keep = data;
+    data = d; // analyzeStudent reads state and horizon from data
+    const items = d.students.map(s => analyzeStudent(s, high)).filter(r => r.quadrant);
+    data = keep;
+    const sig = {}, q = { Q1: 0, Q2: 0, Q3: 0, Q4: 0 };
+    items.forEach(r => { sig[r.risk.level] = (sig[r.risk.level] || 0) + 1; q[r.quadrant.id]++; });
+    return { sample, fileName: d.fileName, n: items.length, signals: sig, quadrants: q, mayExit: items.filter(r => r.risk.flags.mayExit).length,
+      concerns3: items.filter(r => r.criteriaConcerns >= 3).length, state: d.state || '' };
+  }
+  // Share of students at each level, year by year, for oral language or literacy (lower level of the pair).
+  function levelDistribution(kind) {
+    const { d, sample } = classData();
+    const pair = kind === 'oral' ? ['listening', 'speaking'] : ['reading', 'writing'];
+    const by = new Map();
+    d.students.forEach(s => s.periods.forEach(p => {
+      const v = Math.min(p[pair[0]], p[pair[1]]); if (!(v >= 1)) return;
+      const k = p.label || ''; if (!by.has(k)) by.set(k, { label: k, sort: p.sort, counts: [0, 0, 0, 0, 0, 0], n: 0 });
+      const o = by.get(k); o.counts[Math.min(6, Math.floor(v)) - 1]++; o.n++;
+    }));
+    const years = [...by.values()].filter(y => y.n >= 3).sort((a, b) => a.sort - b.sort).slice(-4);
+    return { sample, years };
+  }
+
   window.DIALDRoster = {
-    render, planNames, rememberPlanName, forgetPlanName, keySheetCSV, cleanLabel,
+    render, summary, levelDistribution, planNames, rememberPlanName, forgetPlanName, keySheetCSV, cleanLabel,
     hasData: () => !!(data && data.students.length),
     // exported for tests
     _detect: detect, _widen: widen, _level: level, _ela: elaLevel, _bench: benchCat, _build: build, _sampleRaw: sampleRaw, _planInputs: planInputs
