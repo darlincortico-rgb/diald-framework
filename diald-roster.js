@@ -58,6 +58,8 @@
     FIELDS.push({ k: d + 'Scale', label: DNAME[d] + ' scale score (optional)',
       test: h => h.includes(DP[d]) && /scale|ss$|ssc/.test(h) && !/raw/.test(h) });
   });
+  FIELDS.push({ k: 'iep', label: 'IEP / special education, yes or no (optional)', local: true, test: h => /^iep|specialed|specialeducation|sped|swd|disabilit/.test(h) && !/504/.test(h) });
+  FIELDS.push({ k: 's504', label: '504 plan, yes or no (optional)', local: true, test: h => /504/.test(h) });
   FIELDS.push({ k: 'literacy', label: 'Literacy composite level (optional)', test: h => /literacy/.test(h) && /prof|level|pl$|composite/.test(h) && !/scale/.test(h) });
   FIELDS.push({ k: 'overall', label: 'Overall level (optional)', test: h => /overall|composite/.test(h) && /prof|level|pl$/.test(h) && !/scale|literacy|oral|comprehension/.test(h) });
   FIELDS.push({ k: 'ela', label: 'State ELA test level (optional)', test: h => (/^ela|sba|smarterbalanced|caaspp|mcas|nysela|stateela|statetest|staar/.test(h)) && !/scale|ss$|score$|lexile|benchmark/.test(h) });
@@ -149,8 +151,8 @@
     const m = s.match(/\d+/); return m ? String(Number(m[0])) : '';
   }
   function band(g) {
-    if (g === 'K') return 'K-2'; const n = Number(g); if (!n && n !== 0) return '';
-    return n <= 2 ? 'K-2' : n <= 5 ? '3-5' : n <= 8 ? '6-8' : '9-12';
+    if (g === 'K') return '2-3'; const n = Number(g); if (!n && n !== 0) return '';
+    return n <= 3 ? '2-3' : n <= 5 ? '4-5' : n <= 8 ? '6-8' : '9-12';
   }
 
   /* ---------- reading the file ---------- */
@@ -246,6 +248,9 @@
       const s = byKey.get(key);
       const g = gradeOf(get(r, 'grade')); if (g) s.grade = g;
       const grp = String(get(r, 'group')).trim(); if (grp) s.group = grp.slice(0, 40);
+      const yn = v => { const t = String(v == null ? '' : v).trim().toLowerCase(); return t === '' ? null : /^(y|yes|si|sí|true|1|x)$/.test(t) || t === 'iep' || t === '504'; };
+      const iep = yn(get(r, 'iep')); if (iep !== null) s.iep = iep;
+      const p504 = yn(get(r, 's504')); if (p504 !== null) s.s504 = p504;
       const yrs = num(get(r, 'years')); if (yrs != null) s.years = Math.min(15, Math.round(yrs));
       else if (map.entered != null && s.years === '') { const yy = yearsSince(get(r, 'entered')); if (yy != null) s.years = yy; }
       const t = String(get(r, 'test')).trim(); if (t) s.test = t.slice(0, 30);
@@ -290,7 +295,7 @@
     [[2, 2, 2, 1], [3, 3, 3, 2], [3, 3, 4, 3]]
   ];
   function sampleRaw() {
-    const headers = ['Student Name', 'Student ID', 'School Year', 'Test', 'Grade', 'Group', 'Years in ELD', 'Listening PL', 'Speaking PL', 'Reading PL', 'Writing PL', 'Listening Scale Score', 'Speaking Scale Score', 'Reading Scale Score', 'Writing Scale Score', 'Overall PL', 'SBA ELA Level', 'Reading Benchmark (spring)'];
+    const headers = ['Student Name', 'Student ID', 'School Year', 'Test', 'Grade', 'Group', 'Years in ELD', 'Listening PL', 'Speaking PL', 'Reading PL', 'Writing PL', 'Listening Scale Score', 'Speaking Scale Score', 'Reading Scale Score', 'Writing Scale Score', 'Overall PL', 'SBA ELA Level', 'Reading Benchmark (spring)', 'IEP', '504'];
     const BW = ['Well Below', 'Below', 'At Benchmark', 'Above'];
     const body = [];
     SAMPLE_NAMES.forEach((n, i) => {
@@ -307,7 +312,7 @@
         const lit = Math.min(lv[2], lv[3]);
         const ela = Math.max(1, Math.min(4, lit - 1 + ((i + y) % 3 === 0 ? 1 : 0)));
         const bench = Math.max(1, Math.min(4, lit - 1 + ((i * 3 + y) % 4 === 0 ? 1 : 0)));
-        body.push([n, 'S' + (1001 + i), (2023 + y) + '-' + String(24 + y).slice(-2), 'LAS Links', grade - 2 + y, 'Period ' + (1 + (i % 3)), 3 + y + (i % 3), ...lv, ...ss, overall, ela, BW[bench - 1]]);
+        body.push([n, 'S' + (1001 + i), (2023 + y) + '-' + String(24 + y).slice(-2), 'LAS Links', grade - 2 + y, 'Period ' + (1 + (i % 3)), 3 + y + (i % 3), ...lv, ...ss, overall, ela, BW[bench - 1], i % 5 === 2 ? 'Yes' : 'No', i % 7 === 3 ? 'Yes' : 'No']);
       });
     });
     return { fileName: 'DIALD sample class (fictional).xlsx', headers, body };
@@ -315,8 +320,8 @@
   function templateCSV() {
     const years = ['2023-24', '2024-25', '2025-26'];
     const per = ['Listening PL', 'Speaking PL', 'Reading PL', 'Writing PL', 'Overall PL', 'Literacy PL', 'Listening Scale Score', 'Speaking Scale Score', 'Reading Scale Score', 'Writing Scale Score', 'State ELA Level', 'Benchmark'];
-    const h = ['Student Name', 'Student ID', 'Grade', 'Group', 'Years in ELD', 'Test'].concat(...years.map(y => per.map(c => c + ' ' + y)));
-    const ex = ['Example Student', 'A123', '8', 'Period 2', '5', 'LAS Links',
+    const h = ['Student Name', 'Student ID', 'Grade', 'Group', 'Years in ELD', 'IEP (Yes/No)', '504 (Yes/No)', 'Test'].concat(...years.map(y => per.map(c => c + ' ' + y)));
+    const ex = ['Example Student', 'A123', '8', 'Period 2', '5', 'No', 'No', 'LAS Links',
       '3', '3', '2', '2', '2', '', '488', '492', '470', '466', 'Not Met', 'Below',
       '4', '3', '2', '2', '3', '', '521', '509', '483', '479', 'Not Met', 'Below',
       '4', '4', '2', '3', '3', '', '535', '531', '489', '509', 'Nearly Met', 'At Benchmark'];
@@ -377,7 +382,7 @@
   }
 
   /* ---------- views ---------- */
-  let ui = { view: 'quad', prev: true, q: '', risk: '', group: '', grade: '', search: '', pending: null };
+  let ui = { view: 'quad', prev: true, q: '', risk: '', group: '', grade: '', search: '', support: '', pending: null };
 
   function render(main, ctx) {
     const { esc } = ctx;
@@ -387,8 +392,9 @@
     const items = data.students.map(s => { const r = analyzeStudent(s, high); return { s, r, last: s.periods[s.periods.length - 1] }; }).filter(x => x.r.quadrant);
     const groups = [...new Set(items.map(x => x.s.group).filter(Boolean))].sort();
     const grades = [...new Set(items.map(x => x.s.grade).filter(Boolean))].sort((a, b) => (a === 'K' ? 0 : +a) - (b === 'K' ? 0 : +b));
-    const f = items.filter(x => (!ui.q || x.r.quadrant.id === ui.q) && (!ui.risk || x.r.risk.level === ui.risk) && (!ui.group || x.s.group === ui.group) && (!ui.grade || x.s.grade === ui.grade) && (!ui.search || x.s.name.toLowerCase().includes(ui.search.toLowerCase())))
+    const f = items.filter(x => (!ui.q || x.r.quadrant.id === ui.q) && (!ui.risk || x.r.risk.level === ui.risk) && (!ui.group || x.s.group === ui.group) && (!ui.grade || x.s.grade === ui.grade) && (!ui.search || x.s.name.toLowerCase().includes(ui.search.toLowerCase())) && (!ui.support || (ui.support === 'iep' ? x.s.iep : ui.support === '504' ? x.s.s504 : (x.s.iep || x.s.s504))))
       .sort((a, b) => SIG_ORDER[a.r.risk.level] - SIG_ORDER[b.r.risk.level] || a.s.name.localeCompare(b.s.name));
+    const hasSupport = items.some(x => x.s.iep != null || x.s.s504 != null);
     const cnt = (fn) => f.filter(fn).length;
     const persistent = cnt(x => x.r.risk.level === 'Persistent' || x.r.risk.level === 'Horizon');
     const nearHorizon = cnt(x => x.r.risk.level === 'Horizon');
@@ -445,12 +451,13 @@
             ${groups.length ? `<div><label for="r-group">Group</label><select id="r-group">${opt(groups, ui.group, 'All groups')}</select></div>` : ''}
             ${grades.length ? `<div><label for="r-grade">Grade</label><select id="r-grade">${opt(grades, ui.grade, 'All grades')}</select></div>` : ''}
             <div><label for="r-q">Profile</label><select id="r-q">${opt(['Q1', 'Q2', 'Q3', 'Q4'], ui.q, 'All profiles')}</select></div>
+            ${hasSupport ? `<div><label for="r-support">IEP / 504</label><select id="r-support"><option value="">All</option><option value="any" ${ui.support === 'any' ? 'selected' : ''}>IEP or 504</option><option value="iep" ${ui.support === 'iep' ? 'selected' : ''}>IEP</option><option value="504" ${ui.support === '504' ? 'selected' : ''}>504</option></select></div>` : ''}
             <div><label for="r-risk">Signal</label><select id="r-risk"><option value="">All</option>${['Horizon', 'Persistent', 'Emerging', 'None', 'NA'].map(k => `<option value="${k}" ${ui.risk === k ? 'selected' : ''}>${esc(sigLabel(k))}</option>`).join('')}</select></div>
           </div>
           <div class="tbl-wrap"><table class="tbl roster">
             <thead><tr><th>Student</th><th>Grade</th>${groups.length ? '<th>Group</th>' : ''}<th>Latest</th>${DOMAINS.map(d => `<th title="${DNAME[d]}">${D1[d]}</th>`).join('')}<th>Profile</th><th>Pattern</th><th>Signal</th><th title="Concerns across time in services, English growth, benchmark, and state ELA test">Criteria</th><th></th></tr></thead>
             <tbody>${f.map(x => `<tr data-key="${esc(x.s.key)}">
-              <td><b>${esc(x.s.name)}</b></td><td>${esc(x.s.grade || '—')}</td>${groups.length ? `<td>${esc(x.s.group || '—')}</td>` : ''}<td class="small">${esc(x.last.label)}</td>
+              <td><b>${esc(x.s.name)}</b>${x.s.iep ? ' <span class="chip iep" title="Has an IEP (special education)">IEP</span>' : ''}${x.s.s504 ? ' <span class="chip iep" title="Has a 504 plan">504</span>' : ''}</td><td>${esc(x.s.grade || '—')}</td>${groups.length ? `<td>${esc(x.s.group || '—')}</td>` : ''}<td class="small">${esc(x.last.label)}</td>
               ${DOMAINS.map(d => `<td class="lv ${x.last[d] != null && x.last[d] >= high ? 'hi' : 'lo'}">${x.last[d] == null ? '—' : x.last[d]}</td>`).join('')}
               <td><span class="qchip" style="--c:${QCOLOR[x.r.quadrant.id]}">${x.r.quadrant.id}</span></td>
               <td class="small">${x.r.dims.persistence.run >= 2 && (x.r.dims.persistence.direction === 'oral' || x.r.dims.persistence.direction === 'literacy') ? (x.r.dims.persistence.direction === 'oral' ? 'Oral ahead ' : 'Literacy ahead ') + x.r.dims.persistence.run + ' yrs' : '—'}</td>
@@ -466,7 +473,7 @@
     $$('[data-q]').forEach(b => b.onclick = () => { ui.q = ui.q === b.dataset.q ? '' : b.dataset.q; rerender(); });
     const allq = $('#r-allq'); if (allq) allq.onclick = e => { e.preventDefault(); ui.q = ''; rerender(); };
     $$('.hbar[data-filter]').forEach(b => b.onclick = () => { const [k, v] = b.dataset.filter.split(':'); if (k === 'risk') { ui.risk = ui.risk === v ? '' : v; rerender(); } });
-    [['#r-group', 'group'], ['#r-grade', 'grade'], ['#r-q', 'q'], ['#r-risk', 'risk']].forEach(([id, k]) => { const el = $(id); if (el) el.onchange = () => { ui[k] = el.value; rerender(); }; });
+    [['#r-group', 'group'], ['#r-grade', 'grade'], ['#r-q', 'q'], ['#r-risk', 'risk'], ['#r-support', 'support']].forEach(([id, k]) => { const el = $(id); if (el) el.onchange = () => { ui[k] = el.value; rerender(); }; });
     const sr = $('#r-search'); let t; sr.oninput = () => { clearTimeout(t); t = setTimeout(() => { ui.search = sr.value; rerender(); const n = main.querySelector('#r-search'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250); };
     if (ctx.ai) {
       const go = $('#cai-go'), out = $('#cai-out'), left = $('#cai-left');
@@ -482,7 +489,7 @@
         go.disabled = false;
       };
     }
-    const open = key => { const s = data.students.find(x => x.key === key); if (s) ctx.openStudent({ name: s.name, key: s.key, inputs: planInputs(s, high) }); };
+    const open = key => { const s = data.students.find(x => x.key === key); if (s) ctx.openStudent({ name: s.name, key: s.key, inputs: planInputs(s, high), support: { iep: !!s.iep, s504: !!s.s504 } }); };
     $$('[data-open]').forEach(b => b.onclick = () => open(b.dataset.open));
     $$('tr[data-key]').forEach(tr => tr.ondblclick = () => open(tr.dataset.key));
     $$('.qdot').forEach(g => { g.onclick = () => open(g.dataset.key); g.onkeydown = e => { if (e.key === 'Enter') open(g.dataset.key); }; });
@@ -610,7 +617,7 @@
       const built = build(raw, map, Number($('#m-high').value));
       if (!built.students.length) { $('#m-msg').textContent = 'No rows with levels were found. Check the level columns.'; return; }
       built.keep = $('#m-keep').checked; built.horizon = Number($('#m-hz').value); built.state = $('#m-state').value;
-      data = built; ui = { view: 'quad', prev: true, q: '', risk: '', group: '', grade: '', search: '', pending: null };
+      data = built; ui = { view: 'quad', prev: true, q: '', risk: '', group: '', grade: '', search: '', support: '', pending: null };
       persist(); render(main, ctx); window.scrollTo(0, 0);
     };
   }
@@ -667,8 +674,19 @@
     return { sample, years };
   }
 
+  // Find a student in the class loaded on this computer.
+  function find(term) {
+    if (!data || !term) return [];
+    const t = term.toLowerCase().trim();
+    return data.students.filter(s => s.name.toLowerCase().includes(t) || String(s.key).toLowerCase() === t).slice(0, 8).map(s => ({ key: s.key, name: s.name, grade: s.grade, group: s.group, iep: !!s.iep, s504: !!s.s504 }));
+  }
+  function studentFor(key) {
+    const s = data && data.students.find(x => x.key === key); if (!s) return null;
+    return { name: s.name, key: s.key, inputs: planInputs(s, data.high || 3), support: { iep: !!s.iep, s504: !!s.s504 } };
+  }
+
   window.DIALDRoster = {
-    render, summary, levelDistribution, planNames, rememberPlanName, forgetPlanName, keySheetCSV, cleanLabel,
+    render, summary, levelDistribution, find, studentFor, planNames, rememberPlanName, forgetPlanName, keySheetCSV, cleanLabel,
     hasData: () => !!(data && data.students.length),
     // exported for tests
     _detect: detect, _widen: widen, _level: level, _ela: elaLevel, _bench: benchCat, _build: build, _sampleRaw: sampleRaw, _planInputs: planInputs

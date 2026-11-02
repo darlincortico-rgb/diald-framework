@@ -121,10 +121,11 @@
     { sel: null, title: 'Welcome to DIALD', text: 'This short tour shows where to find each part of the platform. It takes about one minute.' },
     { sel: '[data-nav="home"]', title: 'Dashboard', text: 'Your home page: updates, a monitor of your class, the four profiles, and the DIALD cycle.' },
     { sel: '[data-nav="analyze"]', title: 'Learner Trajectory', text: 'Upload a whole class with the Excel template, or enter one learner’s data. Then follow the five stages: Profile, Pattern Indicator, Instructional Focus, Response, and Adaptation.' },
-    { sel: '[data-nav="library"]', title: 'Library', text: 'Lesson-plan pathways and activities matched to each profile. The library is still being built.' },
+    { sel: '[data-nav="library"]', title: 'Library', text: 'Lessons by grade band, profile, and stage (12 weeks each); activities with a short lesson plan; push-in strategies; and strategies for students with IEPs or 504 plans.' },
     { sel: '[data-nav="plans"]', title: 'My plans', text: 'Plans you saved. Open one to record the learner’s progress and see how they responded.' },
+    { sel: '#find-btn', title: 'Find a student', text: 'After you upload your class, search for any student by name or ID and open their profile. The search stays on your computer.' },
     { sel: '#acct-btn', title: 'Profile & settings', text: 'Your state is saved here. DIALD uses it to choose the exit criteria, LTEL time, and state tests it reads.' },
-    { sel: '[data-nav="help"]', title: 'Help', text: 'Step-by-step guides for every part of DIALD. You can start this tour again from there.' },
+    { sel: '[data-nav="help"]', title: 'Help', text: 'Step-by-step guides for every part of DIALD. Restart this tour from Help or from your profile menu at any time.' },
     { sel: '#fb-btn', title: 'Questions or ideas?', text: 'Send a question or a suggestion to the author at any time.' }
   ];
   function startTour() {
@@ -192,6 +193,7 @@
     ['file', 'Load a class file', `
       <p>Export your language test results from your data system (for example, LAS Links, ACCESS, ELPAC, or NYSESLAT) as Excel or CSV. The template has one row per student and a block of columns for each school year (the year is in the column name, as in Ellevation or DRC longitudinal exports). Files with one row per student per year also work.</p>
       <ul>
+        <li><b>New:</b> the templates have <b>IEP</b> and <b>504</b> columns (Yes/No). They stay on your computer and add a note on the student’s page.</li>
         <li><b>Required:</b> a name or ID column, and the four domain levels (Listening, Speaking, Reading, Writing) for each year.</li>
         <li><b>Helpful:</b> school year, grade, years in ELD services, overall level, literacy composite, scale scores, state ELA test level (for example SBA, MCAS, CAASPP, NYS ELA), and a benchmark result (for example i-Ready, Star, MAP, DIBELS).</li>
       </ul>
@@ -228,7 +230,12 @@
         <li><b>Adaptation:</b> next steps based on how the learner responded.</li>
       </ol>`],
     ['plans', 'Library and saved plans', `
-      <p>The <b>Library</b> has lesson-plan pathways and activities. It is in development: sample pathways show how it will work.</p>
+      <p>The <b>Library</b> has six parts:</p>
+      <ul>
+        <li><b>Lessons:</b> choose a grade band (2–3, 4–5, 6–8, 9–12), then a profile (Q1–Q4), then a stage (1–4). Each stage is 12 weeks with a goal and suggested activities for each week.</li>
+        <li><b>Activities:</b> choose a category, then an activity. Each one has a short lesson plan, an example, sentence frames, and adaptations for levels 1–4.</li>
+        <li><b>The four intervention stages</b>, <b>push-in strategies</b>, <b>students with IEPs or 504 plans</b>, and <b>the DIALD cycle</b>.</li>
+      </ul>
       <p>Choose <b>Save as a plan</b> to keep a learner’s analysis. Plans are named “Plan 1, Plan 2…”. If you opened the student from your file, the name is shown only on your computer. Open <b>My plans</b> to rename a plan (no student names) or record progress.</p>`],
     ['faq', 'Frequently asked questions', `
       <details><summary>Is DIALD free?</summary><p>Yes. DIALD is free for educators.</p></details>
@@ -241,6 +248,8 @@
       <details><summary>What if the student has an IEP?</summary><p>Review language and learning needs together with your MTSS or special education team. DIALD does not separate language needs from disability-related needs.</p></details>
       <details><summary>Can my school or district buy DIALD?</summary><p>Not at this time. DIALD is still in the research stage and is not for sale.</p></details>
       <details><summary>Who created DIALD?</summary><p>Darlin Cortico Rosario, an ESOL/TESOL teacher and doctoral researcher, created the DIALD Framework.</p></details>`],
+    ['security', 'Signing in and security', `
+      <p>For security, DIALD signs you out when you close the tab or the browser, and after 30 minutes without activity (you get a warning 2 minutes before). Your class file stays on your computer only if you chose “Keep this file on this computer”.</p>`],
     ['privacy', 'Privacy', `
       <p>DIALD never stores student names or IDs. Your file is read in your browser. Saved plans keep only levels, scores, grade, years of services, results, and the pathways you chose, and the database rejects any other field. Read the full <a href="#/privacy">privacy page</a>.</p>`],
     ['contact', 'Contact', `
@@ -253,14 +262,14 @@
       <h1>How to use DIALD</h1>
       <p class="lead">Short guides for each part of the platform.</p>
       <div class="row" style="margin:6px 0 22px">
-        <button class="btn primary" type="button" id="h-tour">Take the tour</button>
+        <button class="btn primary" type="button" id="h-tour">↻ Restart the tour</button>
         ${formUrl() ? '<button class="btn" type="button" id="h-ask">Ask a question</button>' : ''}
       </div>
       <div class="help-grid">
         <nav class="help-toc" aria-label="Help topics">${TOPICS.map(([id, t]) => `<a href="#/help?t=${id}" data-h="${id}">${esc(t)}</a>`).join('')}</nav>
         <div class="help-body">${TOPICS.map(([id, t, html]) => `<section class="card" id="h-${id}"><h2>${esc(t)}</h2>${html}</section>`).join('')}</div>
       </div></div>`;
-    main.querySelector('#h-tour').onclick = () => { location.hash = '#/'; setTimeout(startTour, 500); };
+    main.querySelector('#h-tour').onclick = replay;
     const ask = main.querySelector('#h-ask'); if (ask) ask.onclick = openFeedback;
     main.querySelectorAll('[data-ask]').forEach(b => { if (formUrl()) b.onclick = openFeedback; else b.closest('[data-contact]').innerHTML = '<span class="small">The message form is coming soon.</span>'; });
     main.querySelectorAll('[data-h]').forEach(a => a.onclick = e => {
@@ -270,5 +279,7 @@
     if (t) setTimeout(() => { const s = document.getElementById('h-' + t); if (s) s.scrollIntoView({ block: 'start' }); }, 50);
   }
 
-  window.DIALDHelp = { page, startTour, maybeTour, mountFeedback, openFeedback, setUser: u => { fbUser = u; } };
+  // Go to the Dashboard and start the tour from the beginning.
+  function replay() { endTour(); if (location.hash === '#/' || location.hash === '') { window.scrollTo(0, 0); setTimeout(startTour, 200); } else { location.hash = '#/'; setTimeout(startTour, 700); } }
+  window.DIALDHelp = { page, replay, startTour, maybeTour, mountFeedback, openFeedback, setUser: u => { fbUser = u; } };
 })();

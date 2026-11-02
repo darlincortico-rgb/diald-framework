@@ -28,10 +28,19 @@
   const sampleChip = x => x.status === 'sample' ? '<span class="chip sample">Sample content</span>' : '';
 
   /* ---------- Supabase ---------- */
+  // The sign-in session lives in sessionStorage, so it ends when the tab or browser closes.
+  // Only the short-lived PKCE code verifier stays in localStorage, so links opened from an email
+  // (confirm account, reset password) still work in a new tab.
+  const authStorage = {
+    pick: k => (/code-verifier$/.test(k) ? window.localStorage : window.sessionStorage),
+    getItem(k) { try { return this.pick(k).getItem(k); } catch (e) { return null; } },
+    setItem(k, v) { try { this.pick(k).setItem(k, v); } catch (e) { /* storage blocked */ } },
+    removeItem(k) { try { this.pick(k).removeItem(k); } catch (e) { /* storage blocked */ } }
+  };
   let sb = null, user = null, profile = null, profileLoaded = false, googleEnabled = false;
   try {
     if (window.supabase && C.supabaseUrl && C.supabaseKey) {
-      sb = window.supabase.createClient(C.supabaseUrl, C.supabaseKey, { auth: { flowType: 'pkce', detectSessionInUrl: true, persistSession: true, autoRefreshToken: true } });
+      sb = window.supabase.createClient(C.supabaseUrl, C.supabaseKey, { auth: { flowType: 'pkce', detectSessionInUrl: true, persistSession: true, autoRefreshToken: true, storage: authStorage } });
     }
   } catch (e) { console.warn('Accounts unavailable', e); }
   const baseUrl = () => location.origin + location.pathname;
@@ -71,7 +80,7 @@
     const { parts, q } = parseHash();
     const p = parts[0] || '';
     // A signed-in teacher completes the profile form before using the workspace.
-    if (user && profileLoaded && !profile && !['profile', 'privacy', 'terms', 'reset', 'login', 'help'].includes(p)) {
+    if (user && profileLoaded && !profile && !['profile', 'privacy', 'terms', 'reset', 'login', 'help', 'framework'].includes(p)) {
       const here = location.hash.replace(/^#\/?/, '') || 'plans';
       location.hash = '#/profile?next=' + encodeURIComponent(here);
       return;
@@ -79,21 +88,22 @@
     if (p === 'home') { location.hash = '#/'; return; }
     document.body.classList.toggle('public', !user);
     // Everything except the landing, account and policy pages needs a free account.
-    if (sb && !user && !['', 'login', 'reset', 'privacy', 'terms', 'help'].includes(p)) {
+    if (sb && !user && !['', 'login', 'reset', 'privacy', 'terms', 'help', 'framework'].includes(p)) {
       const here = location.hash.replace(/^#\/?/, '');
       location.hash = '#/login?next=' + encodeURIComponent(here);
       return;
     }
-    const map = { '': 'home', analyze: 'analyze', learner: 'analyze', class: 'analyze', plan: 'plans', library: 'library', pathway: 'library', activity: 'library', plans: 'plans', help: 'help' };
+    const map = { '': 'home', analyze: 'analyze', learner: 'analyze', class: 'analyze', plan: 'plans', library: 'library', pathway: 'library', activity: 'library', plans: 'plans', help: 'help', framework: 'framework' };
     setNav(map[p] || '');
     if (p === 'profile') profilePage(q);
     else if (p === '') home();
     else if (p === 'analyze') trajectoryHub(q);
     else if (p === 'learner') analyzePage(q);
     else if (p === 'class') classPage();
-    else if (p === 'library') libraryPage(q);
+    else if (p === 'library') { if (!window.DIALDLibUI || !window.DIALDLibUI.render(main, parts.slice(1), q)) notFound(); }
+    else if (p === 'framework') window.DIALDLibUI.frameworkPage(main, q, { stageLook: STAGE_LOOK, cycleHTML, bindCycle });
     else if (p === 'pathway') pathwayPage(parts[1]);
-    else if (p === 'activity') activityPage(parts[1], q);
+    else if (p === 'activity') { if (!window.DIALDLibUI.activityPage(main, parts[1], q)) notFound(); }
     else if (p === 'plans') plansPage();
     else if (p === 'plan') openPlan(parts[1]);
     else if (p === 'login') loginPage(q);
@@ -111,15 +121,17 @@
     const name = (profile && profile.full_name) || user && (user.email || '') || '';
     const initial = (name.trim()[0] || 'D').toUpperCase();
     const html = user
-      ? `<div class="acct-menu"><button class="avatar" id="acct-btn" aria-haspopup="true" aria-expanded="false" title="${esc(name)}">${esc(initial)}</button>
+      ? `<button class="btn ghost find-btn" id="find-btn" type="button" title="Find a student" aria-label="Find a student"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><span>Find a student</span></button><div class="acct-menu"><button class="avatar" id="acct-btn" aria-haspopup="true" aria-expanded="false" title="${esc(name)}">${esc(initial)}</button>
           <div class="acct-pop" id="acct-pop" hidden>
             <div class="acct-who"><span class="avatar big">${esc(initial)}</span><div><b>${esc(name)}</b><small>${esc(user.email || '')}</small></div></div>
-            <a href="#/profile">Profile &amp; settings</a><a href="#/plans">My plans</a><button id="signout" type="button">Sign out</button>
+            <a href="#/profile">Profile &amp; settings</a><a href="#/plans">My plans</a><button id="replay-tour" type="button">Replay the tour</button><button id="signout" type="button">Sign out</button>
           </div></div>`
       : `<a class="btn" href="#/login">Sign in</a><a class="btn primary" href="#/login?mode=signup">Create account</a>`;
     document.getElementById('acct').innerHTML = html;
     document.getElementById('acct-m').innerHTML = user ? `<a href="#/profile">Profile &amp; settings</a><a href="#" id="signout-m">Sign out</a>` : `<a href="#/login">Sign in</a>`;
     const so = async e => { e.preventDefault(); await sb.auth.signOut(); toast('Signed out.'); location.hash = '#/'; };
+    const fb = document.getElementById('find-btn'); if (fb) fb.onclick = openFinder;
+    const rt = document.getElementById('replay-tour'); if (rt) rt.onclick = () => { if (window.DIALDHelp) window.DIALDHelp.replay(); };
     const b1 = document.getElementById('signout'), b2 = document.getElementById('signout-m');
     if (b1) b1.onclick = so; if (b2) b2.onclick = so;
     const btn = document.getElementById('acct-btn'), pop = document.getElementById('acct-pop');
@@ -131,6 +143,16 @@
       document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
     }
   }
+  // "DIALD Cycle" menu: hover or focus opens it on a computer; the arrow button opens it on touch screens.
+  (() => {
+    const b = document.getElementById('drop-btn'), d = b && b.closest('.nav-drop'); if (!b) return;
+    const close = () => { d.classList.remove('open'); b.setAttribute('aria-expanded', 'false'); };
+    b.onclick = e => { e.stopPropagation(); const o = d.classList.toggle('open'); b.setAttribute('aria-expanded', o); };
+    d.querySelectorAll('.drop-menu a').forEach(a => a.addEventListener('click', () => { close(); a.blur(); d.classList.add('shut'); }));
+    d.addEventListener('mouseleave', () => d.classList.remove('shut'));
+    document.addEventListener('click', e => { if (!d.contains(e.target)) close(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+  })();
   document.getElementById('menu-btn').onclick = () => {
     const n = document.getElementById('nav'); n.classList.toggle('open');
     document.getElementById('menu-btn').setAttribute('aria-expanded', n.classList.contains('open'));
@@ -139,8 +161,8 @@
   /* ---------- HOME ---------- */
   const CYCLE = [
     ['Profile', 'Enter each year’s Listening, Speaking, Reading, and Writing levels. Levels only — never names.'],
-    ['Pattern Indicator', 'See the learner’s quadrant, whether oral language and literacy move apart, and and a provisional trajectory signal.'],
-    ['Instructional Focus', 'Get lesson-plan pathways from the DIALD Library that match the learner’s priorities.'],
+    ['Pattern Indicator', 'See the learner’s quadrant, whether oral language and literacy move apart, and a trajectory signal.'],
+    ['Instructional Focus', 'Get Library lesson pathways that match the learner’s priorities.'],
     ['Response', 'At the review point, record progress. DIALD reads it as Positive, Partial, or Limited.'],
     ['Adaptation', 'Keep, adjust, intensify, or change the support. New evidence returns to the Profile.']
   ];
@@ -153,7 +175,7 @@
     { c: '#C8673F', t: '#fff', i: '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2.2"/><circle cx="10" cy="17" r="2.2"/>' }
   ];
   function cycleHTML(id) {
-    const n = CYCLE.length, C = 200, RO = 194, RI = 104, RM = 149, step = 2 * Math.PI / n;
+    const n = CYCLE.length, C = 200, RO = 194, RI = 98, RM = 146, step = 2 * Math.PI / n;
     const pt = (r, a) => (C + r * Math.cos(a)).toFixed(2) + ' ' + (C + r * Math.sin(a)).toFixed(2);
     // Puzzle joint on the radial edge at angle a: a round knob with a narrow neck that pokes
     // toward increasing angles. A segment draws it as a tab on its end edge (outer -> inner)
@@ -170,18 +192,19 @@
     const segs = CYCLE.map(([t], i) => {
       const L = STAGE_LOOK[i], a0 = -Math.PI / 2 - step / 2 + i * step, a1 = a0 + step, am = a0 + step / 2;
       const d = `M${pt(RO, a0)} A${RO} ${RO} 0 0 1 ${pt(RO, a1)} ${joint(a1, true)} L${pt(RI, a1)} A${RI} ${RI} 0 0 0 ${pt(RI, a0)} ${joint(a0, false)} Z`;
-      // Label block positions, solved so text stays inside each piece (radius, angle shift).
-      const [lr, lt] = [[142, 0], [152, 0.1], [140, -0.18], [142, 0.2], [150, -0.18]][i];
-      const mx = +(C + lr * Math.cos(am + lt)).toFixed(1), my = +(C + lr * Math.sin(am + lt)).toFixed(1);
-      const words = t.split(' ');
-      const label = words.length > 1
-        ? `<text x="${mx}" y="${my + 22}">${esc(words[0])}</text><text x="${mx}" y="${my + 37}">${esc(words.slice(1).join(' '))}</text>`
-        : `<text x="${mx}" y="${my + 26}">${esc(t)}</text>`;
+      // Every label block (number, icon, name) is centered on the middle of its piece:
+      // same radius (middle of the band) and the piece's middle angle, for all five stages.
+      const LR = 150, mx = +(C + LR * Math.cos(am)).toFixed(1), my = +(C + LR * Math.sin(am)).toFixed(1);
+      const words = t.split(' '), two = words.length > 1;
+      const H = two ? 78 : 62, top = my - H / 2;
+      const label = two
+        ? `<text x="${mx}" y="${top + 54}">${esc(words[0])}</text><text x="${mx}" y="${top + 70}">${esc(words.slice(1).join(' '))}</text>`
+        : `<text x="${mx}" y="${top + 54}">${esc(t)}</text>`;
       return `<g class="seg" data-node="${i}" role="button" tabindex="0" aria-pressed="false" aria-label="Stage ${i + 1}: ${esc(t)}"
-          style="--dx:${(9 * Math.cos(am)).toFixed(2)}px;--dy:${(9 * Math.sin(am)).toFixed(2)}px;--d:${i * 90}ms;color:${L.t}">
+          style="--dx:${(6 * Math.cos(am)).toFixed(2)}px;--dy:${(6 * Math.sin(am)).toFixed(2)}px;--d:${i * 90}ms;color:${L.t}">
         <path d="${d}" fill="${L.c}"/>
-        <text class="num" x="${mx}" y="${my - 30}">${i + 1}</text>
-        <svg x="${mx - 15}" y="${my - 22}" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${L.i}</svg>
+        <text class="num" x="${mx}" y="${top + 6}">${i + 1}</text>
+        <svg x="${mx - 12}" y="${top + 16}" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${L.i}</svg>
         ${label}
       </g>`;
     }).join('');
@@ -191,32 +214,42 @@
         <div class="wheel-center" aria-live="polite">
           <small id="${id}-n">The DIALD cycle</small>
           <b id="${id}-t">Five stages</b>
-          <p id="${id}-d">Choose a stage to see what happens in it.</p>
+          <p id="${id}-d">Choose a stage to learn more.</p>
         </div>
       </div>
       <div class="ring-desc" aria-hidden="true"><b id="${id}-t2">The DIALD cycle</b><p id="${id}-d2">Tap a stage to see what happens in it.</p></div>
     </div>`;
   }
-  function bindCycle(id) {
+  function bindCycle(id, onPick) {
     const box = document.getElementById(id); if (!box) return;
     const segs = [...box.querySelectorAll('[data-node]')];
+    const center = box.querySelector('.wheel-center');
     const set = (k, v) => { const el = document.getElementById(id + k); if (el) el.textContent = v; };
-    let locked = null;
-    const show = k => {
-      segs.forEach((x, j) => { x.classList.toggle('on', j === k); x.setAttribute('aria-pressed', j === k && locked === k); });
+    let locked = null, cur, fadeT = null;
+    // The center text fades out, changes, and fades back in, so it never "jumps".
+    const write = k => {
       if (k === null) {
-        box.style.removeProperty('--accent');
-        set('-n', 'The DIALD cycle'); set('-t', 'Five stages'); set('-d', 'Choose a stage to see what happens in it.');
+        set('-n', 'The DIALD cycle'); set('-t', 'Five stages'); set('-d', 'Choose a stage to learn more.');
         set('-t2', 'The DIALD cycle'); set('-d2', 'Tap a stage to see what happens in it.');
-        return;
+      } else {
+        const [t, d] = CYCLE[k];
+        set('-n', 'Stage ' + (k + 1) + ' of 5'); set('-t', t); set('-d', d);
+        set('-t2', (k + 1) + ' · ' + t); set('-d2', d);
       }
-      const [t, d] = CYCLE[k];
-      box.style.setProperty('--accent', STAGE_LOOK[k].c);
-      set('-n', 'Stage ' + (k + 1) + ' of 5'); set('-t', t); set('-d', d);
-      set('-t2', (k + 1) + ' · ' + t); set('-d2', d);
+    };
+    const show = k => {
+      if (k === cur) return; cur = k;
+      segs.forEach((x, j) => { x.classList.toggle('on', j === k); x.setAttribute('aria-pressed', j === k && locked === k); });
+      box.classList.toggle('has-on', k !== null);
+      if (k === null) box.style.removeProperty('--accent'); else box.style.setProperty('--accent', STAGE_LOOK[k].c);
+      clearTimeout(fadeT);
+      if (!center || matchMedia('(prefers-reduced-motion: reduce)').matches) { write(k); return; }
+      center.classList.add('swap');
+      fadeT = setTimeout(() => { write(k); center.classList.remove('swap'); }, 140);
     };
     // Hover previews a stage; a click pins it. Click it again, click outside the wheel, or press Esc to let go.
-    const toggle = k => { locked = locked === k ? null : k; show(locked); };
+    // A click opens the stage's page in "The DIALD cycle".
+    const toggle = k => { if (onPick) onPick(k); else location.hash = '#/framework?stage=' + (k + 1); };
     segs.forEach((g, k) => {
       g.onclick = e => { e.stopPropagation(); toggle(k); };
       g.onmouseenter = () => { if (locked === null) show(k); };
@@ -245,10 +278,37 @@
       esc, profile, toast,
       ai: C.aiUrl && user && sb ? { ask: askAI, format: aiFormat, left: () => sb.rpc('ai_credits_left').then(({ data }) => data) } : null,
       openStudent: st => {
-        A = { planId: null, planNumber: null, inputs: st.inputs, ran: true, stage: 0, selected: [], progress: [], dirty: true, localName: st.name };
-        persistA(); location.hash = '#/learner?keep=1';
+        openFromClass(st);
       }
     });
+  }
+  function openFromClass(st) {
+    A = { planId: null, planNumber: null, inputs: st.inputs, ran: true, stage: 0, selected: [], progress: [], dirty: true, localName: st.name, support: st.support || null };
+    persistA(); location.hash = '#/learner?keep=1';
+  }
+
+  /* ---------- Find a student (class loaded on this computer) ---------- */
+  function openFinder() {
+    if (!user) return;
+    const R = window.DIALDRoster, has = R && R.hasData();
+    const box = document.createElement('div'); box.className = 'finder'; box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', 'Find a student');
+    box.innerHTML = `<div class="finder-in"><div class="row" style="justify-content:space-between;align-items:center"><b>Find a student</b><button type="button" class="fb-x" aria-label="Close">×</button></div>
+      ${has ? '<input id="fd-q" type="search" placeholder="Type part of a name or an ID" autocomplete="off"><ul id="fd-r" class="finder-list"></ul><p class="small" style="margin:6px 0 0">🔒 Searches the class file on this computer only.</p>'
+        : '<p>No class is loaded on this computer yet.</p><a class="btn primary" href="#/class">Upload a class</a>'}</div>`;
+    document.body.appendChild(box);
+    const close = () => { box.remove(); document.removeEventListener('keydown', esc1); };
+    const esc1 = e => { if (e.key === 'Escape') close(); };
+    document.addEventListener('keydown', esc1);
+    box.onclick = e => { if (e.target === box || e.target.closest('.fb-x') || e.target.closest('a')) close(); };
+    if (!has) return;
+    const q = box.querySelector('#fd-q'), r = box.querySelector('#fd-r');
+    const draw = () => {
+      const hits = R.find(q.value);
+      r.innerHTML = q.value.trim() ? (hits.map(h => `<li><button type="button" data-k="${esc(h.key)}"><b>${esc(h.name)}</b><span>${h.grade ? 'Grade ' + esc(h.grade) : ''}${h.group ? ' · ' + esc(h.group) : ''}${h.iep ? ' · IEP' : ''}${h.s504 ? ' · 504' : ''}</span></button></li>`).join('') || '<li class="small">No student matches.</li>') : '';
+      r.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { const st = R.studentFor(b.dataset.k); close(); if (st) openFromClass(st); });
+    };
+    q.oninput = draw; q.onkeydown = e => { if (e.key === 'Enter') { const b = r.querySelector('[data-k]'); if (b) b.click(); } };
+    setTimeout(() => q.focus(), 30);
   }
 
   // Learner Trajectory: choose a whole class or one learner.
@@ -260,6 +320,7 @@
       <div class="eyebrow">Learner Trajectory</div>
       <h1>How do you want to start?</h1>
       <p class="lead" style="max-width:720px">Look at a whole class from your test export, or at one learner at a time. Both follow the five DIALD stages.</p>
+      ${cls ? '<button class="btn" type="button" id="hub-find">🔍 Find a student in your class</button>' : ''}
       <div class="hub-grid">
         <a class="hub-card" href="#/class">
           <span class="hub-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M2.5 19c.8-3.2 3-5 5.5-5s4.7 1.8 5.5 5M14 18.5c.5-2.3 1.9-3.6 3.5-3.6s3 1.3 3.5 3.6"/></svg></span>
@@ -276,8 +337,9 @@
       </div>
       ${cur ? '<p class="small"><a href="#/learner?new=1">Start a new learner instead</a> · <a href="#/learner?sample=ana">Open the sample case</a></p>' : '<p class="small">Want to see an example first? <a href="#/learner?sample=ana">Open the sample case</a>.</p>'}
       <h2 style="margin-top:34px">The five stages</h2>
-      <ol class="stage-strip">${CYCLE.map(([t, d], i) => `<li style="--c:${STAGE_LOOK[i].c}"><span>${i + 1}</span><b>${esc(t)}</b><p>${esc(d)}</p></li>`).join('')}</ol>
+      <ol class="stage-strip">${CYCLE.map(([t, d], i) => `<li style="--c:${STAGE_LOOK[i].c}"><a href="#/framework?stage=${i + 1}"><span>${i + 1}</span><b>${esc(t)}</b><p>${esc(d)}</p></a></li>`).join('')}</ol>
     </div>`;
+    const hb = document.getElementById('hub-find'); if (hb) hb.onclick = openFinder;
   }
 
   function landing(next, mode) {
@@ -397,10 +459,12 @@
     Q4: { ex: [2, 3, 4, 4], what: 'Reading and writing are at or above the reference level, but listening or speaking is below it.', look: 'Is oral participation limited by confidence or by language? Check classroom talk, not only the test.', focus: 'Academic talk: discussion routines, sentence frames, and oral rehearsal before writing.' }
   };
   const UPDATES_DEFAULT = [
+    'New Library: lessons by grade band, profile, and stage, plus 25 activities with lesson plans.',
+    'New: strategies for students with IEPs or 504 plans, and push-in co-teaching models.',
+    'New: find any student in your class with “Find a student” at the top of the page.',
     'New: state rules for Connecticut, Massachusetts, California, and New York.',
     'New: a Help page and a short guided tour. Find them under Help.',
     'Upload a whole class with the new Excel template in Learner Trajectory.',
-    'The DIALD Library is in development: sample pathways for grades 6–8.',
     'Questions or ideas? Use the Questions? button at the bottom of the page.'
   ];
   function homeDashboard() {
@@ -423,7 +487,7 @@
           <div><div class="eyebrow light">Your DIALD workspace</div>
             <h1>${first ? 'Welcome, ' + esc(first) + '.' : 'Welcome.'}</h1>
             <p class="lead">From data to decision: read your learners’ language over time and choose the right support.</p></div>
-          <div class="row"><a class="pill gold" href="#/analyze">Learner Trajectory</a><a class="pill line" href="#/library">Library</a></div>
+          <div class="row"><button class="pill line" type="button" id="home-find">🔍 Find a student</button><a class="pill gold" href="#/analyze">Learner Trajectory</a><a class="pill line" href="#/library">Library</a></div>
         </div>
       </section>
       <div class="ticker" role="region" aria-label="Updates"><div class="ticker-in"><span class="ticker-tag">Updates</span>
@@ -465,6 +529,7 @@
       </div></section>
     </div>`;
     bindCycle('ring');
+    const hf = document.getElementById('home-find'); if (hf) hf.onclick = openFinder;
     // Updates: one line at a time; pauses on hover; no motion when the user prefers less motion.
     const items = [...main.querySelectorAll('#tick li')], dots = [...main.querySelectorAll('[data-tick]')];
     let ti = 0, timer = null;
@@ -672,6 +737,13 @@
     I.periods = I.periods.filter((p, i) => i < 1 || DOMAINS.some(d => p[d]) || i < I.periods.length);
   }
 
+  // IEP / 504 from the class file (kept on this computer only).
+  function supportNote() {
+    const sp = A.support; if (!sp || (!sp.iep && !sp.s504)) return '';
+    const what = [sp.iep ? 'an IEP (special education)' : '', sp.s504 ? 'a 504 plan' : ''].filter(Boolean).join(' and ');
+    return `<div class="flag iep-flag">This learner has ${what}. Review language and learning needs together with the student’s team; DIALD does not separate the two. <a href="#/library/iep">Strategies for students with IEPs or 504 plans →</a></div>`;
+  }
+
   // 01 · Profile: what the data says about the learner, in plain words.
   function profileStage(res) {
     const I = A.inputs, rows = res.rows, last = rows[rows.length - 1], L = last.levels, first = rows[0];
@@ -696,6 +768,7 @@
             <li>${below.length ? 'Below the reference level (' + res.high + '): <b>' + below.map(d => DN[d]).join(', ') + '</b>.' : 'All four domains are at or above the reference level (' + res.high + ').'}</li>
             <li>${extra.length ? 'Other evidence in the data: ' + extra.join(', ') + '.' : 'Only domain levels were entered. Scale scores, the state ELA test, or a benchmark would make the next stages stronger.'}</li>
           </ul>
+          ${supportNote()}
           <h3>Levels by year</h3>
           <table class="tbl lv-tbl"><thead><tr><th>Year</th>${DOMAINS.map(d => `<th>${DN[d]}</th>`).join('')}</tr></thead>
             <tbody>${rows.map((r, i) => `<tr><td>${esc(r.label)}</td>${DOMAINS.map(d => cell(r.levels[d], i ? rows[i - 1].levels[d] : null)).join('')}</tr>`).join('')}</tbody></table>
@@ -790,6 +863,7 @@
           <p>${esc(r.text)}</p>
           ${r.evidence.length ? `<ul class="evidence">${r.evidence.map(e => `<li>${esc(e)}</li>`).join('')}</ul>` : ''}
           ${r.flags.mayExit ? `<div class="flag ok">${r.flags.exitState ? 'The latest results meet the ' + esc(r.flags.exitState) + ' exit criteria (' + esc(r.flags.exitText) + ')' : 'All four domains are at level ' + r.flags.exitLevel + ' or above'}. The learner may meet exit criteria: check the reclassification procedure before planning more intervention.</div>` : ''}
+          ${supportNote()}
           ${r.flags.exitUnknown ? `<div class="flag">To check the ${esc(r.flags.exitState)} exit criteria, DIALD needs ${esc(r.flags.exitNeeds)}.</div>` : ''}
           ${r.flags.pastHorizon ? `<div class="flag">The learner has reached the ${r.flags.horizon}-year LTEL time criterion. Focus on the current need below.</div>` : ''}
           ${r.flags.accessRescale ? `<div class="flag">ACCESS 2025–26 restarted its scale scores. DIALD did not compare this year's scale scores with earlier years.</div>` : ''}
@@ -845,6 +919,7 @@
         <div class="row">${res.priorities.length ? res.priorities.map(d => `<span class="chip q">${cap(d)}</span>`).join('') : '<span class="chip">No domain below the reference level</span>'}${res.quadrant ? quadChip(res.quadrant.id) : ''}</div>
         <p class="small">Suggested pathways for educator review. Choose the ones you will use; they carry into Response.</p>
       </div>
+      ${res.quadrant ? `<a class="card lesson-link" href="#/library/lessons/${L.BANDS[A.inputs.grade] ? A.inputs.grade : '6-8'}/${res.quadrant.id}"><b>📚 Intervention lessons for this profile</b><span>${esc(res.quadrant.id + ' · ' + res.quadrant.name)} route${L.BANDS[A.inputs.grade] ? ', ' + esc(L.BANDS[A.inputs.grade].name) : ''}: four 12-week stages in the Library →</span></a>` : ''}
       ${matches.length ? matches.map(p => pathwayCard(p, res)).join('') : `<div class="card"><p>No pathway in the library matches this profile yet. <a href="#/library">Browse the library</a>.</p></div>`}
       <div class="row" style="margin-top:16px"><button class="btn primary" id="go-resp" ${A.selected.length ? '' : 'disabled'}>Record response →</button></div>`;
     $$('[data-use]').forEach(cb => cb.onchange = () => {
@@ -1332,4 +1407,24 @@
     if (window.DIALDHelp) { window.DIALDHelp.setUser(user); window.DIALDHelp.mountFeedback(); }
   }
   start();
+
+  /* ---------- sign out after 30 minutes without activity (warning at 28) ---------- */
+  (function idleGuard() {
+    const LIMIT = 30 * 60e3, WARN = 28 * 60e3;
+    let last = Date.now(), warned = null;
+    const bump = () => { last = Date.now(); if (warned) { warned.remove(); warned = null; } };
+    ['click', 'keydown', 'scroll', 'touchstart', 'mousemove'].forEach(ev => window.addEventListener(ev, bump, { passive: true }));
+    setInterval(async () => {
+      if (!user || !sb) return;
+      const idle = Date.now() - last;
+      if (idle >= LIMIT) {
+        if (warned) { warned.remove(); warned = null; }
+        await sb.auth.signOut(); toast('You were signed out after 30 minutes without activity.'); location.hash = '#/';
+      } else if (idle >= WARN && !warned) {
+        warned = document.createElement('div'); warned.className = 'idle-warn'; warned.setAttribute('role', 'alertdialog');
+        warned.innerHTML = '<b>Are you still there?</b><p>For security, DIALD will sign you out in 2 minutes.</p><button class="btn primary" type="button">Stay signed in</button>';
+        warned.querySelector('button').onclick = bump; document.body.appendChild(warned);
+      }
+    }, 15e3);
+  })();
 })();

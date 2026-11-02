@@ -31,6 +31,17 @@
       <a href="#/" data-nav="home">Dashboard</a>
       <a href="#/analyze" data-nav="analyze">Learner Trajectory</a>
       <a href="#/library" data-nav="library">Library</a>
+      <div class="nav-drop">
+        <a href="#/framework" data-nav="framework">DIALD Cycle</a>
+        <button type="button" class="drop-btn" id="drop-btn" aria-expanded="false" aria-controls="drop-menu" aria-label="Show the five stages"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <div class="drop-menu" id="drop-menu">
+          <a href="#/framework?stage=1"><i style="--c:#1B3A5C">1</i>Profile</a>
+          <a href="#/framework?stage=2"><i style="--c:#2C6E91">2</i>Pattern Indicator</a>
+          <a href="#/framework?stage=3"><i style="--c:#2A9488">3</i>Instructional Focus</a>
+          <a href="#/framework?stage=4"><i style="--c:#E3A93B">4</i>Response</a>
+          <a href="#/framework?stage=5"><i style="--c:#C8673F">5</i>Adaptation</a>
+        </div>
+      </div>
       <a href="#/plans" data-nav="plans">My plans</a>
       <a href="#/help" data-nav="help">Help</a>
       <span class="acct-m" id="acct-m"></span>
@@ -56,6 +67,7 @@
 <script src="diald-states.js"></script>
 <script src="diald-engine.js"></script>
 <script src="diald-library.js"></script>
+<script src="diald-libui.js"></script>
 <script src="diald-roster.js"></script>
 <script src="diald-help.js"></script>
 <script src="diald-app.js"></script>
