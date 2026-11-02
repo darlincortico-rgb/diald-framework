@@ -80,7 +80,7 @@
     const { parts, q } = parseHash();
     const p = parts[0] || '';
     // A signed-in teacher completes the profile form before using the workspace.
-    if (user && profileLoaded && !profile && !['profile', 'privacy', 'terms', 'reset', 'login', 'help', 'framework'].includes(p)) {
+    if (user && profileLoaded && !profile && !['profile', 'privacy', 'terms', 'reset', 'login', 'help', 'framework', 'states'].includes(p)) {
       const here = location.hash.replace(/^#\/?/, '') || 'plans';
       location.hash = '#/profile?next=' + encodeURIComponent(here);
       return;
@@ -88,12 +88,12 @@
     if (p === 'home') { location.hash = '#/'; return; }
     document.body.classList.toggle('public', !user);
     // Everything except the landing, account and policy pages needs a free account.
-    if (sb && !user && !['', 'login', 'reset', 'privacy', 'terms', 'help', 'framework'].includes(p)) {
+    if (sb && !user && !['', 'login', 'reset', 'privacy', 'terms', 'help', 'framework', 'states'].includes(p)) {
       const here = location.hash.replace(/^#\/?/, '');
       location.hash = '#/login?next=' + encodeURIComponent(here);
       return;
     }
-    const map = { '': 'home', analyze: 'analyze', learner: 'analyze', class: 'analyze', plan: 'plans', library: 'library', pathway: 'library', activity: 'library', plans: 'plans', help: 'help', framework: 'framework' };
+    const map = { '': 'home', analyze: 'analyze', learner: 'analyze', class: 'analyze', plan: 'plans', library: 'library', pathway: 'library', activity: 'library', plans: 'plans', help: 'help', framework: 'framework', states: '' };
     setNav(map[p] || '');
     if (p === 'profile') profilePage(q);
     else if (p === '') home();
@@ -101,6 +101,7 @@
     else if (p === 'learner') analyzePage(q);
     else if (p === 'class') classPage();
     else if (p === 'library') { if (!window.DIALDLibUI || !window.DIALDLibUI.render(main, parts.slice(1), q)) notFound(); }
+    else if (p === 'states') statesPage(q);
     else if (p === 'framework') window.DIALDLibUI.frameworkPage(main, q, { stageLook: STAGE_LOOK, cycleHTML, bindCycle });
     else if (p === 'pathway') pathwayPage(parts[1]);
     else if (p === 'activity') { if (!window.DIALDLibUI.activityPage(main, parts[1], q)) notFound(); }
@@ -124,14 +125,13 @@
       ? `<button class="btn ghost find-btn" id="find-btn" type="button" title="Find a student" aria-label="Find a student"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><span>Find a student</span></button><div class="acct-menu"><button class="avatar" id="acct-btn" aria-haspopup="true" aria-expanded="false" title="${esc(name)}">${esc(initial)}</button>
           <div class="acct-pop" id="acct-pop" hidden>
             <div class="acct-who"><span class="avatar big">${esc(initial)}</span><div><b>${esc(name)}</b><small>${esc(user.email || '')}</small></div></div>
-            <a href="#/profile">Profile &amp; settings</a><a href="#/plans">My plans</a><button id="replay-tour" type="button">Replay the tour</button><button id="signout" type="button">Sign out</button>
+            <a href="#/profile">Profile &amp; settings</a><a href="#/plans">My plans</a><button id="signout" type="button">Sign out</button>
           </div></div>`
       : `<a class="pub-link" href="#/framework" data-nav="framework">The DIALD Cycle</a><a class="btn" href="#/login">Sign in</a><a class="btn primary" href="#/login?mode=signup">Create account</a>`;
     document.getElementById('acct').innerHTML = html;
     document.getElementById('acct-m').innerHTML = user ? `<a href="#/profile">Profile &amp; settings</a><a href="#" id="signout-m">Sign out</a>` : `<a href="#/login">Sign in</a>`;
     const so = async e => { e.preventDefault(); await sb.auth.signOut(); toast('Signed out.'); location.hash = '#/'; };
     const fb = document.getElementById('find-btn'); if (fb) fb.onclick = openFinder;
-    const rt = document.getElementById('replay-tour'); if (rt) rt.onclick = () => { if (window.DIALDHelp) window.DIALDHelp.replay(); };
     const b1 = document.getElementById('signout'), b2 = document.getElementById('signout-m');
     if (b1) b1.onclick = so; if (b2) b2.onclick = so;
     const btn = document.getElementById('acct-btn'), pop = document.getElementById('acct-pop');
@@ -839,9 +839,49 @@
     };
   }
 
+  /* ---------- State rules (public): compare what DIALD uses in each state ---------- */
+  function statesPage(q) {
+    const SS = window.DIALDStates, list = SS.STATES;
+    const mine = profile && SS.codeFor(profile.state);
+    let cur = (q.get('s') || mine || list[0].code).toUpperCase();
+    if (!SS.byCode(cur)) cur = list[0].code;
+    const tag = x => x === 'verified' ? '<span class="chip good">Verified</span>' : '<span class="chip">To confirm</span>';
+    const rows = [
+      ['Language test', st => esc(st.elp.test)],
+      ['Expected growth', st => esc(st.elp.growthText)],
+      ['Exit criteria', st => esc(st.exit.text) + ' ' + tag(st.exit.status)],
+      ['Long-term EL (LTEL) time', st => `<b>${st.ltel.years} years.</b> ${esc(st.ltel.text)} ${tag(st.ltel.status)}`],
+      ['State ELA test', st => `${esc(st.academic.test)}<br><span class="small">${st.academic.levels.map((l, i) => esc(l) + (i + 1 >= st.academic.meets ? ' ✓' : '')).join(' · ')}</span>`]
+    ];
+    main.innerHTML = `<div class="page">
+      <div class="eyebrow">Reference</div>
+      <h1>State rules</h1>
+      <p class="lead" style="max-width:780px">Each state uses its own language test, exit criteria, and definition of a long-term English learner. DIALD reads a learner's data with the rules of the state you choose. Your profile state is the default.</p>
+      <div class="st-tabs" role="tablist">${list.map(st => `<button type="button" role="tab" data-s="${st.code}" aria-selected="${st.code === cur}" class="${st.code === cur ? 'on' : ''}"><b>${st.code}</b>${esc(st.name)}${st.code === mine ? '<small>Your state</small>' : ''}</button>`).join('')}</div>
+      <div id="st-one"></div>
+      <h2 style="margin-top:30px">All states side by side</h2>
+      <div class="table-wrap"><table class="st-table"><thead><tr><th></th>${list.map(st => `<th>${esc(st.name)}</th>`).join('')}</tr></thead>
+        <tbody>${rows.slice(0, 1).concat([['Exit criteria', st => esc(st.exit.short)], ['LTEL time', st => st.ltel.years + ' years'], ['State ELA test', st => esc(st.academic.test)]]).map(([h, f]) => `<tr><th>${h}</th>${list.map(st => `<td>${f(st)}</td>`).join('')}</tr>`).join('')}
+        <tr><th>Any other state</th><td colspan="${list.length}">General rule: any growth counts, exit when all four domains reach the exit level you choose, LTEL time of ${SS.OTHER.ltel.years} years.</td></tr></tbody></table></div>
+      <div class="grid2" style="margin-top:22px">
+        <div class="card"><h3>Working in more than one state?</h3><p>Keep your main state in your profile. When you upload a class or analyze a learner, choose the other state under <b>State rules</b>. DIALD reads that file with that state's rules, and you can switch back at any time.</p></div>
+        <div class="card"><h3>Provisional rules</h3><p>For now, each teacher chooses the rules. They come from official state sources, and the ones marked <b>To confirm</b> still need checking. When a district adopts DIALD, its rules can be set as the default for all its teachers.</p></div>
+      </div>
+    </div>`;
+    const show = code => {
+      const st = SS.byCode(code); cur = code;
+      main.querySelectorAll('[data-s]').forEach(b => { b.classList.toggle('on', b.dataset.s === code); b.setAttribute('aria-selected', b.dataset.s === code); });
+      history.replaceState(null, '', '#/states?s=' + code);
+      $('#st-one').innerHTML = `<div class="card st-card"><h2 style="margin-top:0">${esc(st.name)}</h2>
+        <dl class="rules">${rows.map(([h, f]) => `<dt>${h}</dt><dd>${f(st)}</dd>`).join('')}</dl>
+        <p class="small">Checked ${esc(st.checked)}. Sources: ${st.sources.map(([t, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(t)}</a>`).join(' · ')}</p></div>`;
+    };
+    main.querySelectorAll('[data-s]').forEach(b => b.onclick = () => show(b.dataset.s));
+    show(cur);
+  }
   function stateCard(st) {
     if (!st) return '';
-    if (!st.code) return `<div class="card"><h3>Rules used: general</h3><p class="small">No state was chosen, so DIALD used its general rule: any growth counts, exit when all four domains reach the exit level, LTEL time of ${st.ltel.years} years. Choose your state in your profile or in Reference level.</p></div>`;
+    if (!st.code) return `<div class="card"><h3>Rules used: general</h3><p class="small">No state was chosen, so DIALD used its general rule: any growth counts, exit when all four domains reach the exit level, LTEL time of ${st.ltel.years} years. Choose your state in your profile or in Reference level. <a href="#/states">See the state rules →</a></p></div>`;
     const tag = x => x === 'verified' ? '<span class="chip good">Verified</span>' : '<span class="chip">To confirm</span>';
     return `<div class="card"><h3>Rules used: ${esc(st.name)}</h3>
       <dl class="rules">
@@ -850,6 +890,7 @@
         <dt>LTEL</dt><dd>${esc(st.ltel.text)} ${tag(st.ltel.status)}</dd>
         <dt>State ELA test</dt><dd>${esc(st.academic.test)}: ${st.academic.levels.map((l, i) => esc(l) + (i + 1 >= st.academic.meets ? ' ✓' : '')).join(' · ')}</dd>
       </dl>
+      <p class="small"><a href="#/states?s=${esc(st.code)}">Compare with other states →</a></p>
       <p class="small">Checked ${esc(st.checked)}. Sources: ${st.sources.map(([t, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(t)}</a>`).join(' · ')}</p></div>`;
   }
   function patternStage(res) {
@@ -1208,7 +1249,7 @@
         ${mode !== 'forgot' && googleEnabled ? `<button class="btn google" id="google" type="button"><svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.1C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.4 5.7c4.3-4 6.9-9.9 6.9-17.1z"/><path fill="#FBBC05" d="M10.6 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.1C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.4-5.7c-2.1 1.4-4.8 2.3-8.5 2.3-6.2 0-11.5-4.1-13.4-9.9l-7.9 6.1C6.6 42.6 14.6 48 24 48z"/></svg>Continue with Google</button><div class="divider">or with email</div>` : ''}
         <form id="f" novalidate>
           <label for="email">Email</label><input id="email" type="email" autocomplete="email" required>
-          ${mode !== 'forgot' ? `<label for="pw" style="margin-top:12px">Password</label><input id="pw" type="password" autocomplete="${mode === 'signup' ? 'new-password' : 'current-password'}" minlength="8" required>` : ''}
+          ${mode !== 'forgot' ? `<label for="pw" style="margin-top:12px">Password</label><input id="pw" type="password" autocomplete="${mode === 'signup' ? 'new-password' : 'current-password'}" minlength="8" required>${mode === 'signin' ? '<p class="forgot"><a href="#" data-m="forgot">Forgot your password?</a></p>' : ''}` : ''}
           ${mode === 'signup' ? `<label class="row agree"><input type="checkbox" id="agree"> <span class="small">I agree to the <a href="#/terms">Terms of use</a> and <a href="#/privacy">Privacy policy</a>. I will not enter student names or identifying information.</span></label>` : ''}
           <p id="msg" class="err" role="alert"></p>
           <button class="btn primary wide" type="submit">${mode === 'signup' ? 'Create account' : mode === 'forgot' ? 'Send reset link' : 'Sign in'}</button>
@@ -1260,7 +1301,7 @@
       e.preventDefault(); const p = $('#pw').value;
       if (p.length < 8) { $('#msg').textContent = 'Use at least 8 characters.'; return; }
       const { error } = await sb.auth.updateUser({ password: p });
-      if (error) $('#msg').textContent = error.message; else { toast('Password updated.'); location.hash = '#/plans'; }
+      if (error) $('#msg').textContent = error.message; else { toast('Password updated.'); location.hash = '#/profile'; }
     };
   }
 
@@ -1291,6 +1332,7 @@
         <label for="pf-name">Full name</label><input id="pf-name" maxlength="120" autocomplete="name" value="${esc(P.full_name)}" required>
         <label for="pf-district" style="margin-top:12px">School district or organization</label><input id="pf-district" maxlength="160" autocomplete="organization" value="${esc(P.district)}" placeholder="e.g. Hartford Public Schools" required>
         <label for="pf-state" style="margin-top:12px">State</label><select id="pf-state">${STATES.map(s => `<option ${P.state === s ? 'selected' : ''}>${s}</option>`).join('')}</select>
+        <p class="small" style="margin:6px 0 0">This state's rules are used by default. Work in more than one state? You can choose other state rules each time you upload a class or analyze a learner. <a href="#/states">Compare the state rules →</a></p>
         <label for="pf-role" style="margin-top:12px">Your role</label><select id="pf-role"><option value="">Choose one</option>${ROLES.map(r => `<option ${P.role === r ? 'selected' : ''}>${esc(r)}</option>`).join('')}</select>
         <fieldset style="border:0;padding:0;margin:14px 0 0"><legend style="font-size:13px;font-weight:700;margin-bottom:6px">Grades you usually teach</legend>
           <div class="row">${GRADE_BANDS.map(g => `<label class="row" style="font-weight:400;gap:6px;margin:0 10px 0 0"><input type="checkbox" style="width:auto" name="pf-g" value="${g}" ${(P.grades || []).includes(g) ? 'checked' : ''}> ${g}</label>`).join('')}</div>
@@ -1302,7 +1344,10 @@
       ${first ? '' : `<div class="card auth settings" style="max-width:560px">
         <h2>Account</h2>
         <p class="small" style="margin-top:0">Signed in as <b>${esc(user.email)}</b>. DIALD stores your account, this profile, and your saved plans. It never stores student names or IDs.</p>
-        <button class="btn" id="out" type="button">Sign out</button>
+        <h3 style="margin:18px 0 4px">Password</h3>
+        <p class="small" style="margin-top:0">${(user.app_metadata && user.app_metadata.provider === 'google') ? 'You sign in with Google. You can also set a password to sign in with your email.' : 'Choose a new password for your account.'}</p>
+        <a class="btn" href="#/reset">Change password</a>
+        <div style="margin-top:18px"><button class="btn" id="out" type="button">Sign out</button></div>
         <details class="danger-zone"><summary>Delete account</summary>
           <p>This permanently deletes your account, your profile, and <b>all your saved plans</b>. It cannot be undone.</p>
           <label for="del-word">Type <b>DELETE</b> to confirm</label>

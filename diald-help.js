@@ -129,11 +129,13 @@
     { sel: '[data-nav="home"]', title: 'Dashboard', text: 'Your home page: updates, a monitor of your class, the four profiles, and the DIALD cycle.' },
     { sel: '[data-nav="analyze"]', title: 'Learner Trajectory', text: 'Upload a whole class with the Excel template, or enter one learner’s data. Then follow the five stages: Profile, Pattern Indicator, Instructional Focus, Response, and Adaptation.' },
     { sel: '[data-nav="library"]', title: 'Library', text: 'Lessons by grade band, profile, and stage (12 weeks each); activities with a short lesson plan; push-in strategies; and strategies for students with IEPs or 504 plans.' },
+    { sel: '.nav-drop > a', title: 'DIALD Cycle', text: 'The five stages of the framework. Choose a stage to jump to its explanation.' },
+    { sel: '#sn-tab', title: 'Menu', text: 'Open this side menu on any page to go back, go forward, or jump to any lesson, activity, or stage.' },
     { sel: '[data-nav="plans"]', title: 'My plans', text: 'Plans you saved. Open one to record the learner’s progress and see how they responded.' },
     { sel: '#find-btn', title: 'Find a student', text: 'After you upload your class, search for any student by name or ID and open their profile. The search stays on your computer.' },
     { sel: '#acct-btn', title: 'Profile & settings', text: 'Your state is saved here. DIALD uses it to choose the exit criteria, LTEL time, and state tests it reads.' },
-    { sel: '[data-nav="help"]', title: 'Help', text: 'Step-by-step guides for every part of DIALD. Restart this tour from Help or from your profile menu at any time.' },
-    { sel: '#fb-btn', title: 'Questions or ideas?', text: 'Send a question or a suggestion to the author at any time.' }
+    { sel: '[data-nav="help"]', title: 'Help', text: 'Step-by-step guides for every part of DIALD. You can restart this tour from Help at any time.' },
+    { sel: '#fb-btn', title: 'Questions or ideas?', text: 'Send a question or a suggestion at any time.' }
   ];
   function startTour() {
     endTour();
