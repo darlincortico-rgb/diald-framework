@@ -126,7 +126,7 @@
             <div class="acct-who"><span class="avatar big">${esc(initial)}</span><div><b>${esc(name)}</b><small>${esc(user.email || '')}</small></div></div>
             <a href="#/profile">Profile &amp; settings</a><a href="#/plans">My plans</a><button id="replay-tour" type="button">Replay the tour</button><button id="signout" type="button">Sign out</button>
           </div></div>`
-      : `<a class="btn" href="#/login">Sign in</a><a class="btn primary" href="#/login?mode=signup">Create account</a>`;
+      : `<a class="pub-link" href="#/framework" data-nav="framework">The DIALD Cycle</a><a class="btn" href="#/login">Sign in</a><a class="btn primary" href="#/login?mode=signup">Create account</a>`;
     document.getElementById('acct').innerHTML = html;
     document.getElementById('acct-m').innerHTML = user ? `<a href="#/profile">Profile &amp; settings</a><a href="#" id="signout-m">Sign out</a>` : `<a href="#/login">Sign in</a>`;
     const so = async e => { e.preventDefault(); await sb.auth.signOut(); toast('Signed out.'); location.hash = '#/'; };

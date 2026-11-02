@@ -17,5 +17,8 @@ window.DIALD_CONFIG = {
   // Other options (used only when feedbackFormLink is empty): a Formspree form ID ...
   feedbackFormId: '',
   // Or a Google Form (free, no monthly limit): the form's formResponse address and the entry number of each question.
-  feedbackGoogleForm: { action: '', fields: { type: '', message: '', email: '', page: '' } }
+  feedbackGoogleForm: {
+    action: 'https://docs.google.com/forms/d/e/1FAIpQLSccLZ_Z4_INt8Iufp0QTEe8QlG7pDyboii8mQSpaEqtilyprQ/formResponse',
+    fields: { type: 'entry.1390914084', message: 'entry.2147042059', role: 'entry.2103246136', email: 'entry.1351130191' }
+  }
 };

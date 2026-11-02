@@ -13,7 +13,7 @@
   const GF = C.feedbackGoogleForm && C.feedbackGoogleForm.action && C.feedbackGoogleForm.fields ? C.feedbackGoogleForm : null;
   // Simplest option: the Google Form link itself, shown inside the chat window.
   const EMBED = !C.feedbackFormLink ? '' : /forms\.gle/.test(C.feedbackFormLink) ? String(C.feedbackFormLink).trim() : String(C.feedbackFormLink).trim().replace(/\?.*$/, '').replace(/\/(edit|viewform|formResponse)?$/, '/viewform');
-  const formUrl = () => (EMBED ? EMBED : GF ? GF.action : C.feedbackFormId ? 'https://formspree.io/f/' + encodeURIComponent(C.feedbackFormId) : '');
+  const formUrl = () => (GF ? GF.action : EMBED ? EMBED : C.feedbackFormId ? 'https://formspree.io/f/' + encodeURIComponent(C.feedbackFormId) : '');
   async function sendMessage(m) {
     if (GF) {
       const body = new URLSearchParams();
@@ -27,18 +27,22 @@
     if (!res.ok) throw new Error('status ' + res.status);
   }
   let fbUser = null;
+  const MARK = '<svg viewBox="0 0 200 200" aria-hidden="true"><path d="M140.9 83.9 A58 58 0 1 1 104.1 60.9" fill="none" stroke="#7fd3c9" stroke-width="17" stroke-linecap="round"/><path d="M46.5 147.7 L 32 190 L 73.0 169.9 Z" fill="#7fd3c9"/><circle cx="80" cy="98" r="18" fill="#fff"/><path d="M 50 142 C 84 136, 112 112, 124 62 C 126 54, 136 54, 136 63 C 138 118, 116 150, 82 162 C 66 167, 46 154, 50 142 Z" fill="#fff"/><rect x="128" y="8" width="46" height="28" rx="9" fill="#E3A93B"/></svg>';
+  const HEAD = `<div class="fb-top">${MARK}<div><b>Questions &amp; ideas</b></div><button type="button" class="fb-x" id="fb-x" aria-label="Close">×</button></div>`;
+  const BTN = `<button class="fb-btn" id="fb-btn" type="button" aria-expanded="false" aria-controls="fb-panel" title="Questions or ideas?">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9l-4.5 3.5V17H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" fill="currentColor"/></svg>
+        <span>Questions &amp; ideas</span></button>`;
   function mountEmbedded() {
     const box = document.createElement('div');
     box.id = 'fb';
-    box.innerHTML = `
-      <button class="fb-btn" id="fb-btn" type="button" aria-expanded="false" aria-controls="fb-panel" title="Questions or ideas?">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9l-4.5 3.5V17H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" fill="currentColor"/></svg>
-        <span>Questions?</span></button>
+    box.innerHTML = `${BTN}
       <div class="fb-panel fb-embed" id="fb-panel" role="dialog" aria-label="Send a question or idea" hidden>
-        <div class="fb-head"><b>Questions or ideas?</b><button type="button" class="fb-x" id="fb-x" aria-label="Close">×</button></div>
-        <p class="fb-warn" style="margin-top:0">🔒 Please do not include student names or IDs.</p>
-        <div class="fb-frame"></div>
-        <p class="small" style="margin:8px 0 0"><a href="${esc(EMBED)}" target="_blank" rel="noopener">Open the form in a new tab ↗</a></p>
+        ${HEAD}
+        <div class="fb-body">
+          <p class="fb-warn">🔒 Please do not include student names or IDs.</p>
+          <div class="fb-frame"></div>
+          <p class="small" style="margin:8px 0 0"><a href="${esc(EMBED)}" target="_blank" rel="noopener">Open the form in a new tab ↗</a></p>
+        </div>
       </div>`;
     document.body.appendChild(box);
     const panel = box.querySelector('#fb-panel'), btn = box.querySelector('#fb-btn');
@@ -60,29 +64,31 @@
   }
   function mountFeedback() {
     if (!formUrl() || document.getElementById('fb')) return;
-    if (EMBED) return mountEmbedded();
+    if (EMBED && !GF) return mountEmbedded();
     const box = document.createElement('div');
     box.id = 'fb';
-    box.innerHTML = `
-      <button class="fb-btn" id="fb-btn" type="button" aria-expanded="false" aria-controls="fb-panel" title="Questions or ideas?">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9l-4.5 3.5V17H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" fill="currentColor"/></svg>
-        <span>Questions?</span></button>
+    const TYPES = [['Question', 'Ask about DIALD', 'What would you like to know?'], ['Suggestion', 'Idea for the site', 'What should DIALD add or change?'], ['Something is not working', 'Report a problem', 'What happened, and on which page?'], ['Other', 'Anything else', 'Write your message']];
+    box.innerHTML = `${BTN}
       <div class="fb-panel" id="fb-panel" role="dialog" aria-label="Send a question or idea" hidden>
-        <div class="fb-head"><b>Questions or ideas?</b><button type="button" class="fb-x" id="fb-x" aria-label="Close">×</button></div>
+        ${HEAD}
+        <div class="fb-body">
         <form id="fb-form">
-          <p class="small" style="margin-top:0">Your message goes to Darlin Cortico Rosario, the author of DIALD.</p>
-          <label for="fb-type">Type</label>
-          <select id="fb-type" name="type"><option>Question</option><option>Suggestion</option><option>Something is not working</option><option>Other</option></select>
-          <label for="fb-msg">Message</label>
-          <textarea id="fb-msg" name="message" rows="5" maxlength="3000" required placeholder="Write your question or idea"></textarea>
+          <fieldset class="fb-types"><legend>What is it about?</legend>
+            ${TYPES.map(([v, l], i) => `<label class="fb-type"><input type="radio" name="fbtype" value="${esc(v)}" ${i === 0 ? 'checked' : ''}><span>${esc(l)}</span></label>`).join('')}
+          </fieldset>
+          <label for="fb-msg">Your message</label>
+          <textarea id="fb-msg" name="message" rows="5" maxlength="3000" required placeholder="${esc(TYPES[0][2])}"></textarea>
           <p class="fb-warn">🔒 Please do not include student names or IDs.</p>
-          <label for="fb-email">Your email (optional, for a reply)</label>
+          <label for="fb-role">Your role <span class="small">(optional)</span></label>
+          <select id="fb-role"><option value="">Choose…</option>${['ESOL / ELD / bilingual teacher', 'Classroom or content teacher', 'Coach or administrator', 'Researcher or student', 'Other'].map(r => `<option>${esc(r)}</option>`).join('')}</select>
+          <label for="fb-email">Your email <span class="small">(optional, if you want a reply)</span></label>
           <input id="fb-email" name="email" type="email" maxlength="120" placeholder="you@school.org">
           <input type="text" name="_gotcha" tabindex="-1" autocomplete="off" class="fb-hp" aria-hidden="true">
           <p class="err" id="fb-err" role="alert"></p>
           <button class="btn primary" type="submit" id="fb-send">Send</button>
         </form>
-        <div id="fb-done" hidden><p><b>Thank you!</b> Your message was sent.</p><button class="btn" type="button" id="fb-again">Send another</button></div>
+        <div id="fb-done" class="fb-done" hidden><span class="fb-ok" aria-hidden="true">✓</span><p><b>Thank you!</b><br>Your message was sent.</p><button class="btn" type="button" id="fb-again">Send another</button></div>
+        </div>
       </div>`;
     document.body.appendChild(box);
     const $ = s => box.querySelector(s);
@@ -92,6 +98,7 @@
       if (open) { if (fbUser && fbUser.email && !$('#fb-email').value) $('#fb-email').value = fbUser.email; setTimeout(() => $('#fb-msg').focus(), 30); }
     };
     btn.onclick = () => set(panel.hidden);
+    box.querySelectorAll('[name=fbtype]').forEach(r => r.onchange = () => { $('#fb-msg').placeholder = TYPES.find(t => t[0] === r.value)[2]; });
     $('#fb-x').onclick = () => set(false);
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && !panel.hidden) set(false); });
     $('#fb-again').onclick = () => { $('#fb-done').hidden = true; $('#fb-form').hidden = false; $('#fb-msg').value = ''; $('#fb-msg').focus(); };
@@ -103,7 +110,7 @@
       try {
         const page = (location.hash.replace(/^#\/?/, '').split(/[/?]/)[0]) || 'home';
         if (box.querySelector('.fb-hp').value) throw new Error('spam'); // hidden field filled in: a bot
-        await sendMessage({ type: $('#fb-type').value, message: msg, email: $('#fb-email').value.trim(), page });
+        await sendMessage({ type: (box.querySelector('[name=fbtype]:checked') || {}).value || 'Question', message: msg, role: $('#fb-role').value, email: $('#fb-email').value.trim(), page });
         $('#fb-form').hidden = true; $('#fb-done').hidden = false;
       } catch (x) {
         err.textContent = 'The message could not be sent. Please try again in a moment.';
