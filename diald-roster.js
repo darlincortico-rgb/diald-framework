@@ -182,12 +182,21 @@
   // Some systems (for example Ellevation) put a learner's whole test history in one cell:
   // "3 - Intermediate (1/5/2026) | 2 - Early Intermediate (1/2/2025)". Split each cell by date
   // and build one row per school year, so the rest of DIALD reads it like any other file.
-  const HIST_PART = /^\s*(.+?)\s*\((\d{1,2})\/(\d{1,2})\/(\d{4})\)\s*$/;
+  // A part looks like "3 - Intermediate (1/5/2026)"; dates may also be 2026-01-05 or "Jan 5, 2026".
+  const HIST_PART = /^\s*(.+?)\s*\(([^()]*\d{4}[^()]*)\)\s*$/;
+  const HIST_SPLIT = /\s*(?:\||\r?\n|;)\s*/;
+  function histDate(t) {
+    let m = t.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/); if (m) return { m: Number(m[1]), y: Number(m[3]) };
+    m = t.match(/(\d{4})-(\d{1,2})-(\d{1,2})/); if (m) return { m: Number(m[2]), y: Number(m[1]) };
+    const d = Date.parse(t); if (!isNaN(d)) { const x = new Date(d); return { m: x.getMonth() + 1, y: x.getFullYear() }; }
+    return null;
+  }
+  const histParts = v => String(v == null ? '' : v).split(HIST_SPLIT).map(p => p.trim()).filter(Boolean);
   function unstack(raw) {
-    const isHist = v => { const t = String(v == null ? '' : v).trim(); return t !== '' && t.split('|').every(p => HIST_PART.test(p)); };
+    const isHist = v => { const ps = histParts(v); if (!ps.length) return false; const ok = ps.filter(p => { const m = p.match(HIST_PART); return m && histDate(m[2]); }).length; return ok >= 1 && ok >= ps.length / 2; };
     const hist = raw.headers.map((h, i) => {
       const filled = raw.body.map(r => r[i]).filter(v => String(v == null ? '' : v).trim() !== '');
-      return filled.length && filled.filter(isHist).length >= filled.length * 0.8;
+      return filled.length > 0 && filled.filter(isHist).length >= filled.length * 0.5;
     });
     const histCols = hist.map((x, i) => (x ? i : -1)).filter(i => i >= 0);
     const domainCols = histCols.filter(i => DOMAINS.some(d => norm(raw.headers[i]).includes(DP[d])));
@@ -204,9 +213,10 @@
     const body = [];
     raw.body.forEach((r, ri) => {
       const byYear = new Map();
-      histCols.forEach((c, k) => String(r[c] == null ? '' : r[c]).split('|').forEach(part => {
+      histCols.forEach((c, k) => histParts(r[c]).forEach(part => {
         const m = part.match(HIST_PART); if (!m) return;
-        const y = sy(Number(m[2]), Number(m[4]));
+        const dt = histDate(m[2]); if (!dt) return;
+        const y = sy(dt.m, dt.y);
         if (!byYear.has(y)) byYear.set(y, histCols.map(() => ''));
         byYear.get(y)[k] = m[1].trim();
       }));
@@ -644,7 +654,7 @@
     const noId = map.name == null && map.first == null && map.last == null && map.id == null;
     const show = FIELDS.filter(f => f.k !== 'name' || map.first == null);
     main.innerHTML = `<div class="dash"><div class="dash-head"><div class="dash-in"><div><div class="eyebrow">Analyze my file · step 2 of 2</div><h1>Check the columns</h1>
-      <p class="small"><span class="local-chip">🔒 On this computer only</span> ${esc(raw.fileName)} · ${raw.body.length} rows</p></div></div></div>
+      <p class="small"><span class="local-chip">🔒 On this computer only</span> ${esc(raw.fileName)} · ${raw.body.length} rows <span class="small" style="opacity:.6">· reader v24</span></p></div></div></div>
       <div class="dash-in"><div class="card">
         ${raw.widened ? `<p class="small"><b>Note:</b> your file has ${raw.widened} years in separate columns. DIALD turned them into one row per year.</p>` : ''}
         ${raw.unstacked ? `<p class="small"><b>Note:</b> your file keeps each learner's test history in one cell (as Ellevation does). DIALD split it by test date into one row per school year (a January 2026 test counts as 2025-26). If the file had no years-in-services column, DIALD counted the years of test history.</p>` : ''}
