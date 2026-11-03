@@ -435,7 +435,7 @@
     '6-8': { Q1: { 1: {
       title: 'Read for Structure, Listen to Infer',
       about: 'A 12-week Stage 1 route for grades 6–8 learners who speak and listen well but read and write below grade level (Q1, oral dominant). Weeks 1–6 build academic reading and summary writing; weeks 7–12 build academic listening, using students’ oral strengths as a bridge. Each week has 3 sessions of 45 minutes. Weeks 1, 6, and 12 use the same summary task and the same 8-point rubric, so you can measure growth.',
-      workbook: 'library-files/Read_for_Structure_Listen_to_Infer_DIALD.pdf', word: 'library-files/Read_for_Structure_Listen_to_Infer_DIALD.docx', pages: 44,
+      workbook: 'Read_for_Structure_Listen_to_Infer_DIALD.pdf', word: 'Read_for_Structure_Listen_to_Infer_DIALD.docx', pages: 44,
       slides: ['12zpz1395MXIEdoydby94BMOJyKhUX8Wu1ukkTnACws8', '1arcn6gLKhzKiKqMXCVwakeBy29LIAiv7vn6CfP3Wjwo', '1UCqwhWrWLlSJjDd1u--ovkjx84du1bn_S_45cU3hOUw',
         '1y6cDJaCVRsUprFydEME4pVXKsw1YobftIdGgv3MjP4Y', '1P5gltm51JVgcxnwZCSAqVCTRXz9-8vR7onNPr_SMjHk', '1XVOKXg2Uj5bt8OGOBiehRxKS8l0QhLFNDHnJtdVoDZ4',
         '1VuswaXWg8R9XN3Vp99McEPZ_pbxopPyriWPCYCokKSI', '1LRrHLsqFeL6ArVP2LcE7rc4Vun_ZCAdYgIuJkAqX2Ic', '1yyCjOn13Y2pbK21ov4cOQQbLN5gx1PgZimB6CAA0OIU',
@@ -444,7 +444,7 @@
     '9-12': { Q1: { 1: {
       title: 'Read to Analyze, Listen to Synthesize',
       about: 'A 12-week Stage 1 route for high school learners who speak and listen well but read and write below grade level (Q1, oral dominant). Weeks 1–6 build academic reading and objective summaries; weeks 7–12 build lecture listening, Cornell notes, and synthesis. Each week has 3 sessions of 45 minutes. Weeks 1, 6, and 12 use the same summary task and the same 8-point rubric, so you can measure growth.',
-      workbook: 'library-files/Read_to_Analyze_Listen_to_Synthesize_DIALD.pdf', word: 'library-files/Read_to_Analyze_Listen_to_Synthesize_DIALD.docx', pages: 47,
+      workbook: 'Read_to_Analyze_Listen_to_Synthesize_DIALD.pdf', word: 'Read_to_Analyze_Listen_to_Synthesize_DIALD.docx', pages: 47,
       slides: ['1lT7q4Ev9_vJEgeuywznHoKt5DiiZOdVgCSDW53oA6Oo', '1fF6zRgJ3KlF8B8aqGZnPzv-N845bToAMlH-Tu3YZVVc', '1-oPzqdDpjT7xC491rC1GpFz92vciW4n_VsOQW3Sqo8E',
         '1oZt3GdVzkNEx3xPDzJDQ3mKyPhZdUESSwO9TGCJBDDI', '1IN0UTOwXdupvznMICTAsM-aWjmA9nBRqcUUNOI-sdNE', '1A79LdVnZZcXzr4XnWwPNsWISenSHaeAuILLE9NjcVwo',
         '1oFtW_VjYzSSGqNwFJP_KQEVKdshpmFZR-VUxP5X-qpo', '1NFFOi_2yZwHtQNca9dOXjE1x8g6Pkz0AunyERS0HRyg', '1qs70iPVEFtdxfyp0Qx3wmD4VS3dBw3m_33T20FE61nY',

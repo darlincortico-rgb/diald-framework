@@ -939,3 +939,16 @@ body.public .sn-tab, body.public #sn { display: none; }
 .unit-actions .small { max-width: 520px; }
 .week .small-btn { display: inline-flex; margin-top: 8px; padding: 6px 12px; font-size: 14.5px; }
 .unit-notes { margin: 12px 0 0; padding-left: 20px; } .unit-notes li { margin: 3px 0; }
+/* ---- group by profile ---- */
+.grp-bar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; margin: 14px 0 8px; }
+.roster tr.q-head td { background: color-mix(in srgb, var(--c) 12%, #fff); border-top: 3px solid var(--c); padding: 10px 12px; font-size: 16px; }
+.roster tr.q-head .q-route { float: right; font-size: 14.5px; font-weight: 600; }
+@media (max-width: 720px) { .roster tr.q-head .q-route { float: none; display: block; margin-top: 4px; } }
+/* ---- first load: a short loading screen instead of the search-engine text ---- */
+.boot { display: none; }
+.js .boot { display: grid; place-items: center; min-height: 60vh; }
+.js .seo-intro { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.boot-in { text-align: center; color: var(--ink-2); font-weight: 600; }
+.boot-ring { display: inline-block; width: 44px; height: 44px; border-radius: 50%; border: 4px solid var(--brand-soft); border-top-color: var(--teal); animation: bootspin .9s linear infinite; }
+@keyframes bootspin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .boot-ring { animation: none; } }

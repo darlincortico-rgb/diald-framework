@@ -176,7 +176,51 @@
     if (hi < 0) throw new Error('No header row was found. The first row should have column names.');
     const headers = rows[hi].map(h => String(h).trim());
     const body = rows.slice(hi + 1).filter(r => r.some(c => String(c).trim() !== ''));
-    return widen({ fileName: file.name, headers, body });
+    return widen(unstack({ fileName: file.name, headers, body }));
+  }
+
+  // Some systems (for example Ellevation) put a learner's whole test history in one cell:
+  // "3 - Intermediate (1/5/2026) | 2 - Early Intermediate (1/2/2025)". Split each cell by date
+  // and build one row per school year, so the rest of DIALD reads it like any other file.
+  const HIST_PART = /^\s*(.+?)\s*\((\d{1,2})\/(\d{1,2})\/(\d{4})\)\s*$/;
+  function unstack(raw) {
+    const isHist = v => { const t = String(v == null ? '' : v).trim(); return t !== '' && t.split('|').every(p => HIST_PART.test(p)); };
+    const hist = raw.headers.map((h, i) => {
+      const filled = raw.body.map(r => r[i]).filter(v => String(v == null ? '' : v).trim() !== '');
+      return filled.length && filled.filter(isHist).length >= filled.length * 0.8;
+    });
+    const histCols = hist.map((x, i) => (x ? i : -1)).filter(i => i >= 0);
+    const domainCols = histCols.filter(i => DOMAINS.some(d => norm(raw.headers[i]).includes(DP[d])));
+    if (domainCols.length < 4) return raw;
+    // A test given in January 2026 belongs to school year 2025-26.
+    const sy = (m, y) => { const a = m >= 7 ? y : y - 1; return a + '-' + String(a + 1).slice(-2); };
+    const nh = raw.headers.map(norm);
+    const hasWho = FIELDS.filter(f => ['name', 'first', 'last', 'id'].includes(f.k)).some(f => nh.some(h => h && f.test(h)));
+    const hasYears = nh.some(h => h && FIELDS.find(f => f.k === 'years').test(h));
+    const base = raw.headers.map((h, i) => i).filter(i => !hist[i]);
+    const gradeCol = base.findIndex(i => FIELDS.find(f => f.k === 'grade').test(nh[i]));
+    const headers = histCols.map(i => raw.headers[i]).concat(['School Year'], base.map(i => raw.headers[i]),
+      hasWho ? [] : ['Student Name'], hasYears ? [] : ['Years in ELD (from test history)']);
+    const body = [];
+    raw.body.forEach((r, ri) => {
+      const byYear = new Map();
+      histCols.forEach((c, k) => String(r[c] == null ? '' : r[c]).split('|').forEach(part => {
+        const m = part.match(HIST_PART); if (!m) return;
+        const y = sy(Number(m[2]), Number(m[4]));
+        if (!byYear.has(y)) byYear.set(y, histCols.map(() => ''));
+        byYear.get(y)[k] = m[1].trim();
+      }));
+      const years = [...byYear.keys()].sort();
+      years.forEach((y, yi) => {
+        const b = base.map(i => r[i]);
+        if (gradeCol >= 0) {
+          const g = gradeOf(b[gradeCol]), back = years.length - 1 - yi;
+          if (g !== '') { const n = (g === 'K' ? 0 : Number(g)) - back; b[gradeCol] = n < 0 ? '' : n === 0 ? 'K' : String(n); }
+        }
+        body.push(byYear.get(y).concat([y], b, hasWho ? [] : ['Student ' + (ri + 1)], hasYears ? [] : [years.length]));
+      });
+    });
+    return { fileName: raw.fileName, headers, body, unstacked: true };
   }
 
   // Some exports put every year on one row ("Listening PL 2024-25", "Listening PL 2025-26").
@@ -248,7 +292,7 @@
       const s = byKey.get(key);
       const g = gradeOf(get(r, 'grade')); if (g) s.grade = g;
       const grp = String(get(r, 'group')).trim(); if (grp) s.group = grp.slice(0, 40);
-      const yn = v => { const t = String(v == null ? '' : v).trim().toLowerCase(); return t === '' ? null : /^(y|yes|si|sí|true|1|x)$/.test(t) || t === 'iep' || t === '504'; };
+      const yn = v => { const t = String(v == null ? '' : v).trim().toLowerCase(); if (t === '') return null; if (/^(n|no|none|false|0|not eligible|n\/a|na|-)$/.test(t)) return false; return true; };
       const iep = yn(get(r, 'iep')); if (iep !== null) s.iep = iep;
       const p504 = yn(get(r, 's504')); if (p504 !== null) s.s504 = p504;
       const yrs = num(get(r, 'years')); if (yrs != null) s.years = Math.min(15, Math.round(yrs));
@@ -382,7 +426,7 @@
   }
 
   /* ---------- views ---------- */
-  let ui = { view: 'quad', prev: true, q: '', risk: '', group: '', grade: '', search: '', support: '', pending: null };
+  let ui = { view: 'quad', prev: true, q: '', risk: '', group: '', grade: '', search: '', support: '', byQ: false, pending: null };
 
   function render(main, ctx) {
     const { esc } = ctx;
@@ -454,16 +498,29 @@
             ${hasSupport ? `<div><label for="r-support">IEP / 504</label><select id="r-support"><option value="">All</option><option value="any" ${ui.support === 'any' ? 'selected' : ''}>IEP or 504</option><option value="iep" ${ui.support === 'iep' ? 'selected' : ''}>IEP</option><option value="504" ${ui.support === '504' ? 'selected' : ''}>504</option></select></div>` : ''}
             <div><label for="r-risk">Signal</label><select id="r-risk"><option value="">All</option>${['Horizon', 'Persistent', 'Emerging', 'None', 'NA'].map(k => `<option value="${k}" ${ui.risk === k ? 'selected' : ''}>${esc(sigLabel(k))}</option>`).join('')}</select></div>
           </div>
+          <div class="grp-bar"><label class="row small" style="gap:6px;font-weight:600;margin:0"><input type="checkbox" id="r-byq" style="width:auto" ${ui.byQ ? 'checked' : ''}> Group students by profile (Q1–Q4)</label>
+            ${ui.byQ ? '<button type="button" class="btn ghost" id="r-csv">⬇ Download groups (CSV)</button>' : ''}</div>
           <div class="tbl-wrap"><table class="tbl roster">
             <thead><tr><th>Student</th><th>Grade</th>${groups.length ? '<th>Group</th>' : ''}<th>Latest</th>${DOMAINS.map(d => `<th title="${DNAME[d]}">${D1[d]}</th>`).join('')}<th>Profile</th><th>Pattern</th><th>Signal</th><th title="Concerns across time in services, English growth, benchmark, and state ELA test">Criteria</th><th></th></tr></thead>
-            <tbody>${f.map(x => `<tr data-key="${esc(x.s.key)}">
+            <tbody>${(() => {
+              const row = x => `<tr data-key="${esc(x.s.key)}">
               <td><b>${esc(x.s.name)}</b>${x.s.iep ? ' <span class="chip iep" title="Has an IEP (special education)">IEP</span>' : ''}${x.s.s504 ? ' <span class="chip iep" title="Has a 504 plan">504</span>' : ''}</td><td>${esc(x.s.grade || '—')}</td>${groups.length ? `<td>${esc(x.s.group || '—')}</td>` : ''}<td class="small">${esc(x.last.label)}</td>
               ${DOMAINS.map(d => `<td class="lv ${x.last[d] != null && x.last[d] >= high ? 'hi' : 'lo'}">${x.last[d] == null ? '—' : x.last[d]}</td>`).join('')}
               <td><span class="qchip" style="--c:${QCOLOR[x.r.quadrant.id]}">${x.r.quadrant.id}</span></td>
               <td class="small">${x.r.dims.persistence.run >= 2 && (x.r.dims.persistence.direction === 'oral' || x.r.dims.persistence.direction === 'literacy') ? (x.r.dims.persistence.direction === 'oral' ? 'Oral ahead ' : 'Literacy ahead ') + x.r.dims.persistence.run + ' yrs' : '—'}</td>
               <td><span class="badge ${x.r.risk.level}" style="font-size:12px;padding:3px 8px">${esc(x.r.risk.label)}</span>${x.r.risk.flags.mayExit ? ' <span class="chip good" title="Meets the exit criteria in this file">Exit?</span>' : ''}</td>
               <td class="small" title="${esc(x.r.criteria.map(c => c.label + ': ' + c.text).join('\n'))}">${x.r.criteriaAvailable ? `<b class="${x.r.criteriaConcerns >= 3 ? 'crit-hi' : ''}">${x.r.criteriaConcerns}</b> of ${x.r.criteriaAvailable}` : '—'}</td>
-              <td><button class="btn ghost" data-open="${esc(x.s.key)}" type="button">Open →</button></td></tr>`).join('') || `<tr><td colspan="13" class="small">No students match these filters.</td></tr>`}</tbody></table></div>
+              <td><button class="btn ghost" data-open="${esc(x.s.key)}" type="button">Open →</button></td></tr>`;
+              const empty = `<tr><td colspan="13" class="small">No students match these filters.</td></tr>`;
+              if (!ui.byQ) return f.map(row).join('') || empty;
+              const cols = 8 + DOMAINS.length + (groups.length ? 1 : 0);
+              return ['Q1', 'Q2', 'Q3', 'Q4'].map(q => {
+                const xs = f.filter(x => x.r.quadrant.id === q); if (!xs.length) return '';
+                const bands = xs.map(x => band(x.s.grade)).filter(Boolean); const bd = bands.sort((p, n) => bands.filter(v => v === n).length - bands.filter(v => v === p).length)[0] || '6-8';
+                return `<tr class="q-head" style="--c:${QCOLOR[q]}"><td colspan="${cols}"><span class="qchip" style="--c:${QCOLOR[q]}">${q}</span> <b>${esc(E.QUADRANTS[q].name)}</b> · ${xs.length} student${xs.length > 1 ? 's' : ''}
+                  <a class="q-route" href="#/library/lessons/${bd}/${q}/1">Library route for this group →</a></td></tr>` + xs.map(row).join('');
+              }).join('') || empty;
+            })()}</tbody></table></div>
         </div>
       </div></div>`;
     const $ = s => main.querySelector(s), $$ = s => [...main.querySelectorAll(s)];
@@ -474,6 +531,14 @@
     const allq = $('#r-allq'); if (allq) allq.onclick = e => { e.preventDefault(); ui.q = ''; rerender(); };
     $$('.hbar[data-filter]').forEach(b => b.onclick = () => { const [k, v] = b.dataset.filter.split(':'); if (k === 'risk') { ui.risk = ui.risk === v ? '' : v; rerender(); } });
     [['#r-group', 'group'], ['#r-grade', 'grade'], ['#r-q', 'q'], ['#r-risk', 'risk'], ['#r-support', 'support']].forEach(([id, k]) => { const el = $(id); if (el) el.onchange = () => { ui[k] = el.value; rerender(); }; });
+    const bq = $('#r-byq'); if (bq) bq.onchange = () => { ui.byQ = bq.checked; rerender(); };
+    const csv = $('#r-csv'); if (csv) csv.onclick = () => {
+      const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+      const lines = [['Profile', 'Profile name', 'Student', 'Grade', 'Group', 'Signal'].map(q).join(',')];
+      ['Q1', 'Q2', 'Q3', 'Q4'].forEach(k => f.filter(x => x.r.quadrant.id === k).forEach(x => lines.push([k, E.QUADRANTS[k].name, x.s.name, x.s.grade, x.s.group, x.r.risk.label].map(q).join(','))));
+      const blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'DIALD groups by profile.csv'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    };
     const sr = $('#r-search'); let t; sr.oninput = () => { clearTimeout(t); t = setTimeout(() => { ui.search = sr.value; rerender(); const n = main.querySelector('#r-search'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250); };
     if (ctx.ai) {
       const go = $('#cai-go'), out = $('#cai-out'), left = $('#cai-left');
@@ -582,6 +647,7 @@
       <p class="small"><span class="local-chip">🔒 On this computer only</span> ${esc(raw.fileName)} · ${raw.body.length} rows</p></div></div></div>
       <div class="dash-in"><div class="card">
         ${raw.widened ? `<p class="small"><b>Note:</b> your file has ${raw.widened} years in separate columns. DIALD turned them into one row per year.</p>` : ''}
+        ${raw.unstacked ? `<p class="small"><b>Note:</b> your file keeps each learner's test history in one cell (as Ellevation does). DIALD split it by test date into one row per school year (a January 2026 test counts as 2025-26). If the file had no years-in-services column, DIALD counted the years of test history.</p>` : ''}
         <p>${ui.pending.remembered ? 'DIALD remembered how this kind of file is organized.' : 'DIALD matched these columns by their names.'} Fix anything that is wrong, then choose <b>Analyze</b>. Fields marked 🔒 are used only on this computer.</p>
         <div class="tbl-wrap"><table class="tbl map-tbl"><thead><tr><th>DIALD needs</th><th>Column in your file</th><th>Example</th></tr></thead><tbody>
         ${show.map(f => `<tr class="${f.required && map[f.k] == null ? 'need' : ''}"><td>${f.local ? '🔒 ' : ''}${esc(f.label)}${f.required ? ' <span class="req">required</span>' : ''}</td>

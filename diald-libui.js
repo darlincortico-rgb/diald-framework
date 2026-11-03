@@ -1,5 +1,5 @@
 /* DIALD Library pages and the public "DIALD cycle" page.
-   Every card has a picture: the site first tries library-img/<key>.jpg (Darlin's own images);
+   Every card has a picture: the site first tries lib-<key>.jpg (in the main folder) (Darlin's own images);
    if that file is not there yet, a DIALD-colored illustration is shown instead. */
 (function () {
   'use strict';
@@ -34,7 +34,7 @@
       <svg class="cover-art" viewBox="0 0 320 180" preserveAspectRatio="xMidYMid slice"><circle cx="270" cy="20" r="90" fill="#fff" opacity=".08"/><circle cx="40" cy="170" r="70" fill="#fff" opacity=".07"/>
         ${label ? `<text x="24" y="150" font-size="56" font-weight="800" fill="#fff" opacity=".9" font-family="Public Sans, Arial">${esc(label)}</text>` : ''}
         <g transform="translate(${label ? 210 : 124} ${label ? 30 : 42}) scale(${label ? 3.6 : 3.9})" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${ICON[icon] || ICON.lessons}</g></svg>
-      <img src="library-img/${esc(key)}.jpg" alt="" loading="lazy" onerror="this.remove()">
+      <img src="lib-${esc(key)}.jpg" alt="" loading="lazy" onerror="this.remove()">
     </div>`;
   }
   const card = (href, key, icon, n, title, text, opts = {}) => `<a class="pcard" href="${href}">${pic(key, icon, n, opts.label)}<div class="pcard-body">${opts.eyebrow ? `<div class="eyebrow">${esc(opts.eyebrow)}</div>` : ''}<h3>${esc(title)}</h3>${text ? `<p>${esc(text)}</p>` : ''}${opts.foot ? `<span class="pcard-foot">${opts.foot}</span>` : ''}</div></a>`;
