@@ -351,21 +351,22 @@
   ];
   // Each week = one weekly unit (3 sessions of 45 minutes). Status: planned · in-progress · ready.
   const W = (title, acts, goal) => ({ title, activities: acts, goal, status: 'planned' });
+  const R = (title, acts, goal) => ({ title, activities: acts, goal, status: 'ready' });
   const lessons = {
     '6-8': {
       Q1: { 1: [
-        W('Reading routines and baseline', ['think-aloud-annotation', 'vocabulary-rating'], 'Baseline writing sample and reading check'),
-        W('Main idea and key details', ['think-aloud-annotation', 'get-the-gist'], 'State the main idea of an informational text'),
-        W('Academic words in context', ['frayer-model', 'cognate-detectives'], 'Explain key words using clues in the text'),
-        W('Summarizing a text', ['get-the-gist', 'somebody-wanted-but-so'], 'Write a 20-word summary'),
-        W('Text-dependent questions', ['reciprocal-teaching', 'partner-talk-moves'], 'Answer questions with evidence from the text'),
-        W('Mid-cycle check: say it, then write it', ['say-it-then-write-it', 'exit-ticket'], 'Mid-cycle writing sample with the same rubric'),
-        W('Text structure: cause and effect', ['dictogloss', 'anticipation-guide'], 'Use cause-and-effect language in writing'),
-        W('Text structure: compare and contrast', ['reciprocal-teaching', 'word-sort'], 'Write a compare-and-contrast paragraph with linking words'),
-        W('Claim and evidence', ['evidence-sort', 'four-corners'], 'Choose strong evidence for a claim'),
-        W('Explaining evidence in a paragraph', ['claim-evidence-explain', 'say-it-then-write-it'], 'Write a claim–evidence–explain paragraph'),
-        W('Revising for precise words', ['dialogue-journal', 'whiteboard-check'], 'Revise a paragraph with precise words and linking words'),
-        W('Final writing and reflection', ['claim-evidence-explain', 'vocabulary-rating'], 'Post-assessment: final writing with the baseline rubric')
+        R('Identifying text structures and signal words', ['word-sort', 'think-aloud-annotation'], 'Name five text structures and their signal words; baseline summary'),
+        R('Main ideas, key details, and examples', ['get-the-gist', 'think-aloud-annotation'], 'Separate the main idea from details and examples'),
+        R('Matching graphic organizers to text structures', ['think-aloud-annotation', 'word-sort'], 'Choose the organizer that fits a text and explain why'),
+        R('Paraphrasing without changing meaning', ['say-it-then-write-it', 'partner-talk-moves'], 'Restate academic sentences in your own words'),
+        R('Drafting structured informational summaries', ['get-the-gist', 'somebody-wanted-but-so'], 'Write a short summary with topic, cause, and result'),
+        R('Synthesizing information across two texts', ['evidence-sort', 'exit-ticket'], 'Combine two texts; mid-cycle summary check'),
+        R('Listening for topic, main idea, and key words', ['dictogloss', 'listen-and-draw'], 'Track the topic and key words in a spoken talk'),
+        R('Tracking spoken signal words and transitions', ['dictogloss', 'partner-talk-moves'], 'Use spoken transitions to separate claims from evidence'),
+        R('Selective two-column notes with symbols', ['preview-view-review', 'dictogloss'], 'Take short notes from a talk and retell from them'),
+        R('Speaker purpose, reasons, and evidence', ['evidence-sort', 'four-corners'], 'Identify a speaker’s purpose, reasons, and evidence'),
+        R('Inferring from tone and stress', ['partner-talk-moves', 'think-pair-share'], 'Infer meaning from tone and stress, with proof'),
+        R('Synthesized listening and spoken retell', ['inside-outside-circle', 'exit-ticket'], 'Spoken retell; final summary check with the baseline rubric')
       ] },
       Q2: { 1: [
         W('Goals and exit criteria', ['vocabulary-rating', 'dialogue-journal'], 'Set personal goals from the exit criteria'),
@@ -409,7 +410,46 @@
         W('Presenting with visuals', ['inside-outside-circle', 'whiteboard-check'], 'Rehearse and present with a visual'),
         W('Final presentation and reflection', ['fishbowl-discussion', 'vocabulary-rating'], 'Post-assessment: recorded presentation with the baseline checklist')
       ] }
+    },
+    '9-12': {
+      Q1: { 1: [
+        R('Text structures in academic texts', ['think-aloud-annotation', 'anticipation-guide'], 'Identify five structures in academic texts; baseline summary'),
+        R('Central ideas and supporting evidence', ['get-the-gist', 'evidence-sort'], 'Separate a central idea from supporting evidence'),
+        R('Graphic organizers for complex texts', ['think-aloud-annotation', 'frayer-model'], 'Build an organizer that keeps the text’s relationships'),
+        R('Paraphrasing academic language', ['say-it-then-write-it', 'partner-talk-moves'], 'Restate complex sentences without changing meaning'),
+        R('Writing objective summaries', ['get-the-gist', 'claim-evidence-explain'], 'Write a neutral summary without opinions'),
+        R('Synthesizing two sources', ['evidence-sort', 'exit-ticket'], 'Combine two sources; mid-cycle summary check'),
+        R('Listening to lectures: topic and key terms', ['dictogloss', 'preview-view-review'], 'Track the topic and key terms in a lecture'),
+        R('Tracking lecture transitions and signposts', ['dictogloss', 'partner-talk-moves'], 'Use signposts to follow a lecture’s plan'),
+        R('Cornell notes from a lecture', ['preview-view-review', 'dictogloss'], 'Take Cornell notes and write cue questions'),
+        R('Speaker claim, reasons, and evidence', ['evidence-sort', 'philosophical-chairs'], 'Judge whether a speaker’s evidence is sufficient'),
+        R('Inferring stance from tone and word choice', ['partner-talk-moves', 'fishbowl-discussion'], 'Infer a speaker’s stance and prove it'),
+        R('Synthesized listening and academic retell', ['inside-outside-circle', 'exit-ticket'], 'Academic retell; final summary check with the baseline rubric')
+      ] }
     }
+  };
+
+  /* ---------- Unit materials: workbook (PDF) and lesson slides (Google Slides, copy-only links) ---------- */
+  const copy = id => 'https://docs.google.com/presentation/d/' + id + '/copy';
+  const units = {
+    '6-8': { Q1: { 1: {
+      title: 'Read for Structure, Listen to Infer',
+      about: 'A 12-week Stage 1 route for grades 6–8 learners who speak and listen well but read and write below grade level (Q1, oral dominant). Weeks 1–6 build academic reading and summary writing; weeks 7–12 build academic listening, using students’ oral strengths as a bridge. Each week has 3 sessions of 45 minutes. Weeks 1, 6, and 12 use the same summary task and the same 8-point rubric, so you can measure growth.',
+      workbook: 'library-files/Read_for_Structure_Listen_to_Infer_DIALD.pdf', word: 'library-files/Read_for_Structure_Listen_to_Infer_DIALD.docx', pages: 44,
+      slides: ['12zpz1395MXIEdoydby94BMOJyKhUX8Wu1ukkTnACws8', '1arcn6gLKhzKiKqMXCVwakeBy29LIAiv7vn6CfP3Wjwo', '1UCqwhWrWLlSJjDd1u--ovkjx84du1bn_S_45cU3hOUw',
+        '1y6cDJaCVRsUprFydEME4pVXKsw1YobftIdGgv3MjP4Y', '1P5gltm51JVgcxnwZCSAqVCTRXz9-8vR7onNPr_SMjHk', '1XVOKXg2Uj5bt8OGOBiehRxKS8l0QhLFNDHnJtdVoDZ4',
+        '1VuswaXWg8R9XN3Vp99McEPZ_pbxopPyriWPCYCokKSI', '1LRrHLsqFeL6ArVP2LcE7rc4Vun_ZCAdYgIuJkAqX2Ic', '1yyCjOn13Y2pbK21ov4cOQQbLN5gx1PgZimB6CAA0OIU',
+        '1olWiJ50vbSxZFa0O2x9M-udt8zVCEPD8TkNJW_xm4mc', '1FhXYIVBTyriUz0_Ovgn3IYZTuc0SnBOUZ6HwIwGOKUg', '1n993EMvPQwhIcKgnFg_cnCPMcyY3LCu2LPX_jDWTovE'].map(copy)
+    } } },
+    '9-12': { Q1: { 1: {
+      title: 'Read to Analyze, Listen to Synthesize',
+      about: 'A 12-week Stage 1 route for high school learners who speak and listen well but read and write below grade level (Q1, oral dominant). Weeks 1–6 build academic reading and objective summaries; weeks 7–12 build lecture listening, Cornell notes, and synthesis. Each week has 3 sessions of 45 minutes. Weeks 1, 6, and 12 use the same summary task and the same 8-point rubric, so you can measure growth.',
+      workbook: 'library-files/Read_to_Analyze_Listen_to_Synthesize_DIALD.pdf', word: 'library-files/Read_to_Analyze_Listen_to_Synthesize_DIALD.docx', pages: 47,
+      slides: ['1lT7q4Ev9_vJEgeuywznHoKt5DiiZOdVgCSDW53oA6Oo', '1fF6zRgJ3KlF8B8aqGZnPzv-N845bToAMlH-Tu3YZVVc', '1-oPzqdDpjT7xC491rC1GpFz92vciW4n_VsOQW3Sqo8E',
+        '1oZt3GdVzkNEx3xPDzJDQ3mKyPhZdUESSwO9TGCJBDDI', '1IN0UTOwXdupvznMICTAsM-aWjmA9nBRqcUUNOI-sdNE', '1A79LdVnZZcXzr4XnWwPNsWISenSHaeAuILLE9NjcVwo',
+        '1oFtW_VjYzSSGqNwFJP_KQEVKdshpmFZR-VUxP5X-qpo', '1NFFOi_2yZwHtQNca9dOXjE1x8g6Pkz0AunyERS0HRyg', '1qs70iPVEFtdxfyp0Qx3wmD4VS3dBw3m_33T20FE61nY',
+        '1vaUW-R6yviD3oPvyjW_fMrn3TPQK-DBZ0zYU2wKlndo', '1FLko9PcOLqQaq1tZYeB0wDrh-9ftqvUa7uLo6oPiUDs', '1iCxaofW4zIa507uav2tnIAKJEyHS5iVKhMCvoYK-Zxw'].map(copy)
+    } } }
   };
 
   /* ---------- Push-in strategies (co-teaching with content teachers) ---------- */
@@ -481,7 +521,7 @@
     }
   ];
 
-  const api = { CATEGORIES, GRADES, BANDS, activities, pathways, ROUTES, STAGES, lessons, pushin };
+  const api = { CATEGORIES, GRADES, BANDS, activities, pathways, ROUTES, STAGES, lessons, units, pushin };
   if (typeof module !== 'undefined') module.exports = api;
   root.DIALDLibrary = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

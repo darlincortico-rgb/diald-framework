@@ -178,12 +178,27 @@
     if (!L.BANDS[band] || !L.ROUTES[qd] || !st) return false;
     const { weeks, example } = weeksFor(band, qd, st.n);
     const actLink = id => { const a = L.activities.find(x => x.id === id); return a ? `<a class="chip act" href="#/activity/${a.id}">${esc(a.name)}</a>` : ''; };
+    const unit = L.units && L.units[band] && L.units[band][qd] && L.units[band][qd][st.n];
+    const slideLink = i => unit && unit.slides && unit.slides[i] ? `<a class="btn small-btn" href="${esc(unit.slides[i])}" target="_blank" rel="noopener" title="Opens Google Slides and asks you to make your own copy">Make a copy of the slides ↗</a>` : '';
+    const unitCard = !unit ? '' : `<section class="card unit-card">
+        <div class="unit-head"><div><div class="eyebrow">Unit materials</div><h2 style="margin:2px 0 6px">${esc(unit.title)}</h2></div></div>
+        <p>${esc(unit.about)}</p>
+        <div class="unit-actions">
+          <a class="btn primary" href="${esc(unit.workbook)}" download>⬇ Workbook to print (PDF, ${unit.pages} pages)</a>
+          ${unit.word ? `<a class="btn" href="${esc(unit.word)}" download>⬇ Editable workbook (Word)</a>` : ''}
+        </div>
+        <ul class="unit-notes small">
+          <li><b>PDF:</b> print it as one package: one section per week, with a teacher guide, the rubric, and an answer key.</li>
+          ${unit.word ? '<li><b>Word:</b> edit before printing. For example, remove the teacher read-aloud scripts and the answer key from the student copies.</li>' : ''}
+          ${unit.slides && unit.slides.length ? '<li><b>Slides:</b> each week below has a link that makes your own copy in your Google Drive, so the original stays the same.</li>' : ''}
+        </ul></section>`;
     main.innerHTML = page(`${crumbs([['Library', '#/library'], ['Lessons', '#/library/lessons'], [L.BANDS[band].name, '#/library/lessons/' + band], [qd, `#/library/lessons/${band}/${qd}`], [st.name, '']])}
       <div class="row" style="gap:16px;align-items:center;margin-bottom:8px">${pic(`${band}-${qd}-stage-${st.n}`, 'stages', st.n, String(st.n))}
         <div><div class="eyebrow">${esc(L.BANDS[band].name)} · ${esc(qd)} · ${esc(E.QUADRANTS[qd].name)}</div><h1 style="margin:2px 0 4px">${esc(st.name)}</h1><p class="small" style="margin:0">${esc(st.line)} 12 weeks · 3 sessions of 45 minutes a week.</p></div></div>
       <div class="card"><b>Route focus:</b> ${esc(L.ROUTES[qd].focus)} <span class="small">${esc(BAND_NOTE[band])}</span>
         ${example ? '<p class="small" style="margin:8px 0 0"><span class="chip">Example plan</span> Built from the grades 6–8 Stage 1 sequence. Lessons for this stage are being written.</p>' : ''}</div>
-      <ol class="weeks">${weeks.map((w, i) => `<li class="week ${i === 0 || i === 5 || i === 11 ? 'check' : ''}"><div class="wk-n">Week ${i + 1}</div><div class="wk-b"><b>${esc(w.title)}</b><p>${esc(w.goal)}</p><div class="wk-acts">${w.activities.map(actLink).join('')}</div></div>${i === 0 || i === 5 || i === 11 ? `<span class="chip">${i === 0 ? 'Baseline' : i === 5 ? 'Mid-cycle check' : 'Final check'}</span>` : ''}</li>`).join('')}</ol>
+      ${unitCard}
+      <ol class="weeks">${weeks.map((w, i) => `<li class="week ${i === 0 || i === 5 || i === 11 ? 'check' : ''}"><div class="wk-n">Week ${i + 1}</div><div class="wk-b"><b>${esc(w.title)}</b><p>${esc(w.goal)}</p><div class="wk-acts">${w.activities.map(actLink).join('')}</div>${slideLink(i)}</div>${i === 0 || i === 5 || i === 11 ? `<span class="chip">${i === 0 ? 'Baseline' : i === 5 ? 'Mid-cycle check' : 'Final check'}</span>` : ''}</li>`).join('')}</ol>
       <p class="small">Weeks 1, 6, and 12 use the same measure, so you can record the response in Learner Trajectory.</p>`);
     return true;
   }
