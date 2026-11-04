@@ -19,7 +19,15 @@
     set(store, k, v) { try { store.setItem(k, JSON.stringify(v)); } catch (e) { /* storage may be blocked */ } },
     del(store, k) { try { store.removeItem(k); } catch (e) { /* ignore */ } }
   };
+  // Student names never leave this computer, and they do not stay after the teacher leaves:
+  // a session cookie marks an open browser. When the browser was closed (no cookie), names are removed.
+  const NAMESTORES = [KEY, 'diald-codes', PLANNAMES];
+  const browserWasOpen = /(?:^|; )diald-names=1/.test(document.cookie);
+  if (!browserWasOpen) NAMESTORES.forEach(k => { ls.del(localStorage, k); ls.del(sessionStorage, k); });
+  try { document.cookie = 'diald-names=1; path=/; SameSite=Lax'; } catch (e) { /* ignore */ }
   let data = ls.get(sessionStorage, KEY) || ls.get(localStorage, KEY) || null;
+  // Sign out: remove the class file, the key sheet, and plan names from this browser.
+  function wipeNames() { data = null; NAMESTORES.forEach(k => { ls.del(localStorage, k); ls.del(sessionStorage, k); }); }
   function persist() {
     if (!data) { ls.del(sessionStorage, KEY); ls.del(localStorage, KEY); return; }
     ls.set(sessionStorage, KEY, data);
@@ -829,7 +837,7 @@
     const noId = map.name == null && map.first == null && map.last == null && map.id == null;
     const show = FIELDS.filter(f => f.k !== 'name' || map.first == null);
     main.innerHTML = `<div class="dash"><div class="dash-head"><div class="dash-in"><div><div class="eyebrow">Analyze my file · step 2 of 2</div><h1>Check the columns</h1>
-      <p class="small"><span class="local-chip">🔒 On this computer only</span> ${esc(raw.fileName)} · ${raw.body.length} rows <span class="small" style="opacity:.6">· reader v28</span></p></div></div></div>
+      <p class="small"><span class="local-chip">🔒 On this computer only</span> ${esc(raw.fileName)} · ${raw.body.length} rows <span class="small" style="opacity:.6">· reader v29</span></p></div></div></div>
       <div class="dash-in"><div class="card">
         ${raw.widened ? `<p class="small"><b>Note:</b> your file has ${raw.widened} years in separate columns. DIALD turned them into one row per year.</p>` : ''}
         ${raw.unstacked ? `<p class="small"><b>Note:</b> your file keeps each learner's test history in one cell (as Ellevation does). DIALD split it by test date into one row per school year (a January 2026 test counts as 2025-26). If the file had no years-in-services column, DIALD counted the years of test history.</p>` : ''}
@@ -845,7 +853,7 @@
           <div><label for="m-high">High = level</label><select id="m-high">${[2, 3, 4].map(v => `<option value="${v}" ${v === ((data && data.high) || 3) ? 'selected' : ''}>${v} or above</option>`).join('')}</select></div>
         </div>
         <p class="small" id="m-state-note">${esc(stateNote(stateDefault(ctx)))}</p>
-        <label class="row" style="font-weight:600;gap:8px;margin-top:12px"><input type="checkbox" id="m-keep" style="width:auto"> Keep this file on this computer until I clear it (otherwise it is forgotten when this tab closes)</label>
+        <label class="row" style="font-weight:600;gap:8px;margin-top:12px"><input type="checkbox" id="m-keep" style="width:auto"> Keep this file on this computer until I sign out or close the browser (otherwise it is forgotten when this tab closes)</label>
         <p id="m-msg" class="err" role="alert">${missing.length ? 'Choose the column for: ' + missing.map(d => DNAME[d] + ' level').join(', ') + '.' : noId ? 'Choose a column that tells students apart (name or ID).' : ''}</p>
         <div class="row"><button class="btn primary" id="m-go" type="button">Analyze →</button><button class="btn ghost" id="m-back" type="button">Choose another file</button></div>
       </div></div></div>`;
@@ -948,7 +956,7 @@
   const classInfo = () => data ? { fileName: data.fileName, n: data.students.length, high: data.high || 3, horizon: data.horizon || 6, state: data.state || '' } : null;
   function setFilter(q) { ui.q = q || ''; ui.sel = ''; }
   window.DIALDRoster = {
-    render, summary, levelDistribution, analyzedItems, memberFor, classInfo, setFilter, band, find, studentFor, planNames, planNameFor, rememberPlanName, forgetPlanName, keySheetCSV, loadKeySheet, hasKeys, forgetKeys, nameFor, quadrantOf, cleanLabel, QCOLOR,
+    render, wipeNames, summary, levelDistribution, analyzedItems, memberFor, classInfo, setFilter, band, find, studentFor, planNames, planNameFor, rememberPlanName, forgetPlanName, keySheetCSV, loadKeySheet, hasKeys, forgetKeys, nameFor, quadrantOf, cleanLabel, QCOLOR,
     hasData: () => !!(data && data.students.length),
     // exported for tests
     _detect: detect, _widen: widen, _level: level, _ela: elaLevel, _bench: benchCat, _build: build, _sampleRaw: sampleRaw, _planInputs: planInputs

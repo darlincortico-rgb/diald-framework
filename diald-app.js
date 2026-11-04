@@ -62,6 +62,25 @@
   function freshA() { return { planId: null, planNumber: null, inputs: blankInputs(), stage: 0, selected: [], progress: [], dirty: false }; }
   const result = () => A.ran ? E.analyze(A.inputs) : null;
   function persistA() { store.set('diald-analysis', A); }
+  // Names stay only on this computer, and only while the teacher is signed in.
+  function wipeLocal() { if (window.DIALDRoster) window.DIALDRoster.wipeNames(); A = freshA(); persistA(); }
+  async function signOutClean(msg) { await sb.auth.signOut(); wipeLocal(); if (msg) toast(msg); location.hash = '#/'; }
+  // Before a teacher signs out: offer the key sheet, because the names will be removed from this computer.
+  function signOutAsk() {
+    const pop = document.getElementById('acct-pop'); if (pop) pop.hidden = true;
+    const R = window.DIALDRoster;
+    if (!R || !R.hasKeys()) return signOutClean('Signed out.');
+    const box = document.createElement('div'); box.className = 'gdlg-back';
+    box.innerHTML = `<div class="gdlg" role="dialog" aria-modal="true" aria-labelledby="so-h"><h2 id="so-h" style="margin-top:0">Sign out</h2>
+      <p>When you sign out, DIALD removes your students’ names from this computer. Your plans stay saved with student codes.</p>
+      <p class="small">To see the names next time, keep your <b>key sheet</b> (code ↔ name) and load it after you sign in.</p>
+      <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn primary" id="so-dl" type="button">⬇ Download key sheet and sign out</button><button class="btn" id="so-go" type="button">Sign out</button><button class="btn ghost" id="so-x" type="button">Cancel</button></div></div>`;
+    document.body.appendChild(box);
+    const close = () => box.remove();
+    box.querySelector('#so-x').onclick = close; box.onclick = e => { if (e.target === box) close(); };
+    box.querySelector('#so-go').onclick = () => { close(); signOutClean('Signed out. Names were removed from this computer.'); };
+    box.querySelector('#so-dl').onclick = () => { R.keySheetCSV(); close(); setTimeout(() => signOutClean('Key sheet downloaded. Names were removed from this computer.'), 400); };
+  }
 
   /* ---------- router ---------- */
   function parseHash() {
@@ -133,7 +152,7 @@
       : `<a class="pub-link" href="#/framework" data-nav="framework">The DIALD Cycle</a><a class="btn" href="#/login">Sign in</a><a class="btn primary" href="#/login?mode=signup">Create account</a>`;
     document.getElementById('acct').innerHTML = html;
     document.getElementById('acct-m').innerHTML = user ? `<a href="#/profile">Profile &amp; settings</a><a href="#" id="signout-m">Sign out</a>` : `<a href="#/login">Sign in</a>`;
-    const so = async e => { e.preventDefault(); await sb.auth.signOut(); toast('Signed out.'); location.hash = '#/'; };
+    const so = e => { e.preventDefault(); signOutAsk(); };
     const fb = document.getElementById('find-btn'); if (fb) fb.onclick = openFinder;
     const b1 = document.getElementById('signout'), b2 = document.getElementById('signout-m');
     if (b1) b1.onclick = so; if (b2) b2.onclick = so;
@@ -1417,14 +1436,14 @@
       </div>`}
       </div>`;
     if (!first) {
-      $('#out').onclick = async () => { await sb.auth.signOut(); location.hash = '#/'; };
+      $('#out').onclick = () => signOutAsk();
       $('#del-word').oninput = e => { $('#delacct').disabled = e.target.value.trim() !== 'DELETE'; };
       $('#delacct').onclick = async () => {
         if ($('#del-word').value.trim() !== 'DELETE') return;
         $('#delacct').disabled = true;
         const { error: er } = await sb.rpc('delete_my_account');
         if (er) { $('#del-msg').textContent = 'Could not delete the account: ' + er.message; $('#delacct').disabled = false; return; }
-        await sb.auth.signOut(); A = freshA(); persistA(); toast('Your account and plans were deleted.'); location.hash = '#/';
+        await signOutClean('Your account and plans were deleted.');
       };
     }
     $('#pf').onsubmit = async e => {
@@ -1523,10 +1542,10 @@
       const idle = Date.now() - last;
       if (idle >= LIMIT) {
         if (warned) { warned.remove(); warned = null; }
-        await sb.auth.signOut(); toast('You were signed out after 30 minutes without activity.'); location.hash = '#/';
+        await signOutClean('You were signed out after 30 minutes without activity. Student names were removed from this computer.');
       } else if (idle >= WARN && !warned) {
         warned = document.createElement('div'); warned.className = 'idle-warn'; warned.setAttribute('role', 'alertdialog');
-        warned.innerHTML = '<b>Are you still there?</b><p>For security, DIALD will sign you out in 2 minutes.</p><button class="btn primary" type="button">Stay signed in</button>';
+        warned.innerHTML = '<b>Are you still there?</b><p>For security, DIALD will sign you out in 2 minutes and remove student names from this computer. Keep your key sheet.</p><button class="btn primary" type="button">Stay signed in</button>';
         warned.querySelector('button').onclick = bump; document.body.appendChild(warned);
       }
     }, 15e3);
