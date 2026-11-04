@@ -99,6 +99,7 @@
     else if (p === '') home();
     else if (p === 'analyze') trajectoryHub(q);
     else if (p === 'learner') analyzePage(q);
+    else if (p === 'class' && parts[1] === 'cycle') classCycle(q);
     else if (p === 'class') classPage();
     else if (p === 'library') { if (!window.DIALDLibUI || !window.DIALDLibUI.render(main, parts.slice(1), q)) notFound(); }
     else if (p === 'states') statesPage(q);
@@ -282,6 +283,12 @@
         openFromClass(st);
       },
       startGroup: sb && user && window.DIALDGroups ? st => window.DIALDGroups.startDialog(st, { esc, sb, toast }) : null
+    });
+  }
+  function classCycle(q) {
+    if (!window.DIALDClassCycle) { location.hash = '#/class'; return; }
+    window.DIALDClassCycle.render(main, (Number(q.get('s')) || 1) - 1, {
+      esc, sb, toast, startGroup: sb && user && window.DIALDGroups ? st => window.DIALDGroups.startDialog(st, { esc, sb, toast }) : null
     });
   }
   async function groupPage(id) {
@@ -517,7 +524,7 @@
       </div></section>
       <section class="sec tint"><div class="sec-in">
         <div class="row" style="justify-content:space-between;align-items:flex-end;gap:12px">
-          <div><div class="eyebrow">Example</div><h2 style="margin-bottom:4px">How a class moves across levels</h2>
+          <div><div class="eyebrow" id="mv-eye">Example</div><h2 style="margin-bottom:4px">How a class moves across levels</h2>
           <p class="small" style="margin:0" id="mv-note"></p></div>
           <div class="seg-ctl" role="tablist"><button type="button" data-mv="literacy" class="on">Literacy</button><button type="button" data-mv="oral">Oral language</button></div>
         </div>
@@ -560,6 +567,7 @@
     const drawMv = kind => {
       main.querySelectorAll('[data-mv]').forEach(b => b.classList.toggle('on', b.dataset.mv === kind));
       const dist = R ? R.levelDistribution(kind) : { years: [], sample: true };
+      main.querySelector('#mv-eye').textContent = dist.sample ? 'Example' : 'Your class';
       main.querySelector('#mv-note').textContent = (dist.sample ? 'A fictional class. ' : 'Your class. ') + 'Each bar is one school year; each color is a level (the lower level of ' + (kind === 'oral' ? 'Listening and Speaking' : 'Reading and Writing') + ').';
       const maxLv = Math.max(4, ...dist.years.map(y => y.counts.reduce((m, c, i) => (c ? i + 1 : m), 0)));
       const el = main.querySelector('#mv-chart');

@@ -604,7 +604,7 @@
       <div class="dash-head"><div class="dash-in wide">
         <div><a class="back-link" href="#/analyze">← Learner Trajectory</a><div class="eyebrow">Learner Trajectory · A whole class</div><h1>My class</h1>
           <p class="small"><span class="local-chip">🔒 On this computer only</span> ${esc(data.fileName)} · ${data.students.length} students${data.skipped ? ' · ' + data.skipped + ' rows skipped (no levels)' : ''} · <span class="chip" title="${esc(stateNote(data.state || ''))}">Rules: ${esc(S.get(data.state || '').code ? S.get(data.state).name : 'General')}</span></p></div>
-        <div class="row"><button class="btn" id="r-new" type="button">Load another file</button><button class="btn ghost danger" id="r-clear" type="button">Clear file</button></div>
+        <div class="row"><button class="btn" id="r-new" type="button">Load another file</button><button class="btn ghost danger" id="r-clear" type="button">Clear file</button><a class="btn primary next-btn" href="#/class/cycle">Next: Class profile →</a></div>
       </div></div>
       <div class="dash-in wide cls">
         <aside class="cls-side" aria-label="Class summary">
@@ -659,6 +659,7 @@
               <tbody>${tbody()}</tbody></table></div>
             <p class="small">Click a row to see the student on the chart. “Open →” opens the full profile.</p>
           </div>
+          <a class="next-cta" href="#/class/cycle"><span><b>Next: the DIALD cycle for your class</b><small>Profile, pattern, focus, response, and adaptation for each quadrant group.</small></span><i aria-hidden="true">→</i></a>
         </div>
       </div></div>`;
 
@@ -826,7 +827,7 @@
     const noId = map.name == null && map.first == null && map.last == null && map.id == null;
     const show = FIELDS.filter(f => f.k !== 'name' || map.first == null);
     main.innerHTML = `<div class="dash"><div class="dash-head"><div class="dash-in"><div><div class="eyebrow">Analyze my file · step 2 of 2</div><h1>Check the columns</h1>
-      <p class="small"><span class="local-chip">🔒 On this computer only</span> ${esc(raw.fileName)} · ${raw.body.length} rows <span class="small" style="opacity:.6">· reader v25</span></p></div></div></div>
+      <p class="small"><span class="local-chip">🔒 On this computer only</span> ${esc(raw.fileName)} · ${raw.body.length} rows <span class="small" style="opacity:.6">· reader v26</span></p></div></div></div>
       <div class="dash-in"><div class="card">
         ${raw.widened ? `<p class="small"><b>Note:</b> your file has ${raw.widened} years in separate columns. DIALD turned them into one row per year.</p>` : ''}
         ${raw.unstacked ? `<p class="small"><b>Note:</b> your file keeps each learner's test history in one cell (as Ellevation does). DIALD split it by test date into one row per school year (a January 2026 test counts as 2025-26). If the file had no years-in-services column, DIALD counted the years of test history.</p>` : ''}
@@ -934,8 +935,18 @@
     return { name: s.noName ? s.code : s.name, key: s.key, code: s.code, inputs: planInputs(s, data.high || 3), support: { iep: !!s.iep, s504: !!s.s504 } };
   }
 
+  // For the class cycle (diald-classcycle.js): every student analyzed, plus what a group plan needs.
+  function analyzedItems() {
+    if (!data || !data.students.length) return [];
+    if (data.students.some(s => !s.code)) { assignCodes(data.students); persist(); }
+    const high = data.high || 3;
+    return data.students.map(s => { const r = analyzeStudent(s, high); return { s, r, last: s.periods[s.periods.length - 1] }; }).filter(x => x.r.quadrant);
+  }
+  function memberFor(x) { const lv = englishLevel(x.last); return { code: x.s.code, name: x.s.noName ? '' : x.s.name, grade: x.s.grade, band: band(x.s.grade), level: lv.n, levelHow: lv.how, sig: x.r.risk.level, sigLabel: x.r.risk.label }; }
+  const classInfo = () => data ? { fileName: data.fileName, n: data.students.length, high: data.high || 3, horizon: data.horizon || 6, state: data.state || '' } : null;
+  function setFilter(q) { ui.q = q || ''; ui.sel = ''; }
   window.DIALDRoster = {
-    render, summary, levelDistribution, find, studentFor, planNames, planNameFor, rememberPlanName, forgetPlanName, keySheetCSV, loadKeySheet, hasKeys, forgetKeys, nameFor, quadrantOf, cleanLabel, QCOLOR,
+    render, summary, levelDistribution, analyzedItems, memberFor, classInfo, setFilter, band, find, studentFor, planNames, planNameFor, rememberPlanName, forgetPlanName, keySheetCSV, loadKeySheet, hasKeys, forgetKeys, nameFor, quadrantOf, cleanLabel, QCOLOR,
     hasData: () => !!(data && data.students.length),
     // exported for tests
     _detect: detect, _widen: widen, _level: level, _ela: elaLevel, _bench: benchCat, _build: build, _sampleRaw: sampleRaw, _planInputs: planInputs
