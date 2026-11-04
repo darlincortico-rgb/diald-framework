@@ -12,26 +12,68 @@
   const plural = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
   const count = (arr, f) => { const m = {}; arr.forEach(x => { const k = f(x); if (k != null && k !== '') m[k] = (m[k] || 0) + 1; }); return m; };
   const crit = (x, key) => (x.r.criteria || []).find(c => c.key === key);
-
-  async function render(main, stage, ctx) {
-    const { esc } = ctx, R = window.DIALDRoster, G = window.DIALDGroups;
-    const items = R ? R.analyzedItems() : [];
-    if (!items.length) {
-      main.innerHTML = `<div class="page"><div class="card"><h2 style="margin-top:0">No class file on this computer</h2><p>Upload your class first. Then choose <b>Next</b> to see the DIALD cycle for each quadrant group.</p><a class="btn primary" href="#/class">Upload a class</a></div></div>`;
-      return;
+  const uuid = () => (window.crypto && crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx'.replace(/x/g, () => (Math.random() * 16 | 0).toString(16)));
+  const setName = () => 'Class plan · ' + new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const noSetCols = e => e && /set_id|set_name/.test(e.message || '');
+  // Insert group plans; if the class-plans SQL was not run yet, save them without the grouping.
+  async function insertPlans(sb, rows, toast) {
+    let r = await sb.from('group_plans').insert(rows).select('id');
+    if (r.error && noSetCols(r.error)) {
+      r = await sb.from('group_plans').insert(rows.map(x => { const y = Object.assign({}, x); delete y.set_id; delete y.set_name; return y; })).select('id');
+      if (!r.error && toast) toast('Saved. To group plans into one class plan, run supabase-class-plans.sql once in Supabase.');
     }
-    const info = R.classInfo(), st = Math.max(0, Math.min(4, Number(stage) || 0));
-    const by = {}; QS.forEach(q => { by[q] = items.filter(x => x.r.quadrant.id === q); });
-    let plans = [], planErr = '';
-    if (st >= 3 && ctx.sb && G) { const r = await G.list(ctx.sb); if (r.error) planErr = G.isSetupError(r.error) ? G.SETUP : r.error.message; else plans = r.data || []; }
-    const head = q => `<div class="cc-qhead" style="--c:${QC[q]}"><span class="qchip" style="--c:${QC[q]}">${q}</span><b>${esc(E.QUADRANTS[q].name)}</b><span class="small">${plural(by[q].length, 'student')} · ${pct(by[q].length, items.length)}%</span></div>`;
-    const empty = q => `<p class="small">No students in this profile.</p>`;
-    const bands = q => { const c = count(by[q], x => R.band(x.s.grade)); return Object.keys(c).sort((a, b) => c[b] - c[a]).map(b => ({ b, n: c[b] })); };
+    return r;
+  }
+  // The class plan (set) that already holds students from the file loaded now, if any.
+  function findSet(plans, items) {
+    const codes = new Set(items.map(x => x.s.code));
+    const g = plans.find(p => p.set_id && (p.members || []).some(m => codes.has(m.c)));
+    return g ? { setId: g.set_id, setName: g.set_name || 'Class plan' } : null;
+  }
+  async function currentSet(sb) {
+    const R = window.DIALDRoster, G = window.DIALDGroups, items = R ? R.analyzedItems() : [];
+    const r = sb && G ? await G.list(sb) : { data: [] };
+    return findSet(r.data || [], items) || { setId: uuid(), setName: setName() };
+  }
 
+  async function render(main, stage, ctx, setId) {
+    const { esc } = ctx, R = window.DIALDRoster, G = window.DIALDGroups;
+    const fileItems = R ? R.analyzedItems() : [];
+    const st = Math.max(0, Math.min(4, Number(stage) || 0));
+    let plans = [], planErr = '';
+    if (ctx.sb && G) { const r = await G.list(ctx.sb); if (r.error) planErr = G.isSetupError(r.error) ? G.SETUP : r.error.message; else plans = r.data || []; }
+    let items = fileItems, set = null, full = true;
+    if (setId) {
+      const sp = plans.filter(g => (g.set_id || 'other') === setId);
+      if (!sp.length) { main.innerHTML = `<div class="page"><div class="card"><p>${esc(planErr || 'This class plan was not found.')}</p><a class="btn" href="#/plans">My plans</a></div></div>`; return; }
+      const codes = new Set(sp.flatMap(g => (g.members || []).map(m => m.c)));
+      set = { id: setId, name: sp[0].set_name || (setId === 'other' ? 'Other group plans' : 'Class plan'), plans: sp, codes };
+      plans = sp;
+      items = fileItems.filter(x => codes.has(x.s.code));
+      full = items.length > 0;
+    } else if (!items.length) {
+      main.innerHTML = `<div class="page"><div class="card"><h2 style="margin-top:0">No class file on this computer</h2><p>Upload your class first, or open a saved class plan in <a href="#/plans">My plans</a>.</p><a class="btn primary" href="#/class">Upload a class</a></div></div>`;
+      return;
+    } else {
+      const fs = findSet(plans, items); if (fs) plans = plans.filter(g => g.set_id === fs.setId);
+      else plans = plans.filter(g => !g.set_id && (g.members || []).some(m => items.some(x => x.s.code === m.c)));
+    }
+    const info = R ? R.classInfo() : null;
+    const by = {}; QS.forEach(q => { by[q] = items.filter(x => x.r.quadrant.id === q); });
+    // Without the file, the number of students per quadrant comes from the saved plans.
+    const nq = q => full ? by[q].length : new Set(plans.filter(g => g.quadrant === q).flatMap(g => (g.members || []).map(m => m.c))).size;
+    const total = QS.reduce((t, q) => t + nq(q), 0);
+    const base = set ? `#/cycle/${encodeURIComponent(set.id)}?s=` : '#/class/cycle?s=';
+    const head = q => `<div class="cc-qhead" style="--c:${QC[q]}"><span class="qchip" style="--c:${QC[q]}">${q}</span><b>${esc(E.QUADRANTS[q].name)}</b><span class="small">${plural(nq(q), 'student')} · ${pct(nq(q), total)}%</span></div>`;
+    const empty = q => `<p class="small">No students in this profile.</p>`;
+    const bands = q => { if (!full) { const c = count(plans.filter(g => g.quadrant === q), g => g.band); return Object.keys(c).map(b => ({ b, n: plans.filter(g => g.quadrant === q && g.band === b).reduce((t, g) => t + (g.members || []).length, 0) })); } const c = count(by[q], x => R.band(x.s.grade)); return Object.keys(c).sort((a, b) => c[b] - c[a]).map(b => ({ b, n: c[b] })); };
+
+    const needFile = `<div class="notice-warn small cc-needfile"><b>Load your class file to see the details.</b> Grades, signals, SBA and benchmark come from the file on your computer (DIALD does not save them). <a href="#/class">Upload the class file →</a> The counts below come from your saved plans.</div>`;
+    const lite = (intro) => intro + needFile + `<div class="cc-grid">${QS.map(q => `<div class="card cc-card" style="--c:${QC[q]}">${head(q)}<p class="small" style="margin:6px 0 0">${esc(E.QUADRANTS[q].short)}. ${esc(E.QUADRANTS[q].note)}</p></div>`).join('')}</div>`;
     const stages = [
       // 01 Profile: who is in each group
-      () => `<div class="card cc-intro"><div class="eyebrow">01 · Profile</div><h2>Who is in each group?</h2>
-          <p>Your ${items.length} students, placed by the lower level of each pair (oral language and literacy, High = level ${info.high}+). Each quadrant is a group that can share one plan.</p></div>
+      () => !full ? lite(`<div class="card cc-intro"><div class="eyebrow">01 · Profile</div><h2>Who is in each group?</h2><p>${total} students in this class plan, one group per quadrant.</p></div>`) : `<div class="card cc-intro"><div class="eyebrow">01 · Profile</div><h2>Who is in each group?</h2>
+          <p>Your ${items.length} students, placed by the lower level of each pair (oral language and literacy, High = level ${info ? info.high : 3}+). Each quadrant is a group that can share one plan.</p></div>
         <div class="cc-grid">${QS.map(q => {
           const xs = by[q]; if (!xs.length) return `<div class="card cc-card" style="--c:${QC[q]}">${head(q)}${empty(q)}</div>`;
           const gr = count(xs, x => x.s.grade), sig = count(xs, x => x.r.risk.level);
@@ -42,7 +84,7 @@
             <p class="small" style="margin:6px 0 10px">${esc(E.QUADRANTS[q].short)}</p>
             <dl class="cc-dl">
               <dt>Grades</dt><dd>${Object.keys(gr).sort((a, b) => (+a || 0) - (+b || 0)).map(g => `Grade ${esc(g)}: ${gr[g]}`).join(' · ') || '—'}</dd>
-              <dt>Persistent signal</dt><dd><b>${(sig.Persistent || 0) + (sig.Horizon || 0)}</b>${sig.Horizon ? ` <span class="small">(${sig.Horizon} near or past the ${info.horizon}-year LTEL horizon)</span>` : ''}</dd>
+              <dt>Persistent signal</dt><dd><b>${(sig.Persistent || 0) + (sig.Horizon || 0)}</b>${sig.Horizon ? ` <span class="small">(${sig.Horizon} near or past the ${info ? info.horizon : 6}-year LTEL horizon)</span>` : ''}</dd>
               ${hasEla ? `<dt>Below standard on the state ELA test</dt><dd><b>${ela}</b> of ${xs.length}</dd>` : ''}
               ${hasBen ? `<dt>Below benchmark two times in a row</dt><dd><b>${ben}</b> of ${xs.length}</dd>` : ''}
               ${iep || s504 ? `<dt>IEP / 504</dt><dd>${iep} IEP · ${s504} 504</dd>` : ''}
@@ -50,7 +92,7 @@
             <a class="small" href="#/class" data-filter="${q}">See these students →</a></div>`;
         }).join('')}</div>`,
       // 02 Pattern
-      () => `<div class="card cc-intro"><div class="eyebrow">02 · Pattern Indicator</div><h2>What pattern does each group show?</h2>
+      () => !full ? lite(`<div class="card cc-intro"><div class="eyebrow">02 · Pattern Indicator</div><h2>What pattern does each group show?</h2><p>The pattern is what repeats over the years: which side stays ahead, for how long, and whether it grows.</p></div>`) : `<div class="card cc-intro"><div class="eyebrow">02 · Pattern Indicator</div><h2>What pattern does each group show?</h2>
           <p>The quadrant is one year. The pattern is what repeats over the years: which side stays ahead, for how long, and whether it grows.</p></div>
         <div class="cc-grid">${QS.map(q => {
           const xs = by[q]; if (!xs.length) return `<div class="card cc-card" style="--c:${QC[q]}">${head(q)}${empty(q)}</div>`;
@@ -73,7 +115,7 @@
       () => `<div class="card cc-intro"><div class="eyebrow">03 · Instructional Focus</div><h2>What should each group work on?</h2>
           <p>Each quadrant has a route in the Library: 12 weeks, 3 sessions a week, with the same summary task and rubric at weeks 1, 6, and 12.</p></div>
         <div class="cc-grid">${QS.map(q => {
-          const xs = by[q]; if (!xs.length) return `<div class="card cc-card" style="--c:${QC[q]}">${head(q)}${empty(q)}</div>`;
+          const xs = by[q]; if (!nq(q)) return `<div class="card cc-card" style="--c:${QC[q]}">${head(q)}${empty(q)}</div>`;
           const gr = count(xs, x => x.s.grade);
           return `<div class="card cc-card" style="--c:${QC[q]}">${head(q)}
             <p style="margin:8px 0"><b>Focus:</b> ${esc((L.ROUTES && L.ROUTES[q] ? L.ROUTES[q].focus : ''))}</p>
@@ -84,21 +126,21 @@
       // 04 Response: start plans and monitor them
       () => `<div class="card cc-intro"><div class="eyebrow">04 · Response</div><h2>Start a plan for each group and monitor it</h2>
           <p>A group plan follows the route for 12 weeks. Enter the rubric scores at weeks 1, 6, and 12 to see who is responding. DIALD saves only student codes and scores.</p>
-          <p class="small" style="margin:0">To save one plan per quadrant, use <b>“Add this class to My plans”</b> at the bottom of the page.</p>
+          ${set ? `<p class="small" style="margin:0">Open a plan to enter the rubric scores. ${full ? '' : 'To add a plan with subgroups, load the class file first.'}</p>` : `<p class="small" style="margin:0">To save one plan per quadrant, use <b>“Add this class to My plans”</b> at the bottom of the page.</p>`}
           ${planErr ? `<p class="err small">${esc(planErr)}</p>` : ''}</div>
         <div class="cc-grid">${QS.map(q => {
           const xs = by[q]; const gs = plans.filter(g => g.quadrant === q);
-          if (!xs.length && !gs.length) return `<div class="card cc-card" style="--c:${QC[q]}">${head(q)}${empty(q)}</div>`;
+          if (!nq(q) && !gs.length) return `<div class="card cc-card" style="--c:${QC[q]}">${head(q)}${empty(q)}</div>`;
           return `<div class="card cc-card" style="--c:${QC[q]}">${head(q)}
             ${gs.length ? `<div class="cc-plans">${gs.map(g => G.cardHTML(g, esc)).join('')}</div>` : '<p class="small">No group plan yet.</p>'}
-            ${ctx.startGroup && xs.length ? `<button class="btn small-btn" type="button" data-gstart="${q}">+ ${gs.length ? 'Another' : 'Start a'} ${q} plan (choose subgroups)</button>` : ''}</div>`;
+            ${ctx.startGroup && full && xs.length ? `<button class="btn small-btn" type="button" data-gstart="${q}">+ ${gs.length ? 'Another' : 'Start a'} ${q} plan (choose subgroups)</button>` : ''}</div>`;
         }).join('')}</div>`,
       // 05 Adaptation
       () => `<div class="card cc-intro"><div class="eyebrow">05 · Adaptation</div><h2>What should change next?</h2>
           <p>Based on the rubric scores in your group plans. Keep what works; adjust where progress is limited. When the next state test arrives, upload the new file: the cycle starts again, and students who moved to another quadrant are flagged in their plans.</p></div>
         <div class="cc-grid">${QS.map(q => {
           const gs = plans.filter(g => g.quadrant === q);
-          if (!gs.length) return `<div class="card cc-card" style="--c:${QC[q]}">${head(q)}<p class="small">${by[q].length ? 'No group plan yet. Start one in 04 · Response.' : 'No students in this profile.'}</p></div>`;
+          if (!gs.length) return `<div class="card cc-card" style="--c:${QC[q]}">${head(q)}<p class="small">${nq(q) ? 'No group plan yet. Start one in 04 · Response.' : 'No students in this profile.'}</p></div>`;
           const sm = { Positive: 0, Partial: 0, Limited: 0, 'Not yet': 0 }; gs.forEach(g => { const s = G.summary(g); Object.keys(sm).forEach(k => { sm[k] += s[k]; }); });
           const scored = sm.Positive + sm.Partial + sm.Limited;
           const lead = scored ? ['Positive', 'Partial', 'Limited'].sort((a, b) => sm[b] - sm[a])[0] : 'Not yet';
@@ -114,23 +156,35 @@
 
     main.innerHTML = `<div class="page class-cycle">
       <div class="row" style="justify-content:space-between;align-items:flex-end;gap:12px">
-        <div><div class="eyebrow">Learner Trajectory · A whole class</div><h1 style="margin-bottom:4px">My class: the DIALD cycle</h1>
-          <p class="small" style="margin:0"><span class="local-chip">🔒 On this computer only</span> ${esc(info.fileName)} · ${items.length} students · one group per quadrant</p></div>
-        <a class="btn" href="#/class">← My class</a>
+        <div><div class="eyebrow">${set ? 'Class plan · the DIALD cycle' : 'Learner Trajectory · A whole class'}</div>
+          <div class="row" style="gap:8px;align-items:center"><h1 style="margin:2px 0 4px" id="cc-title">${set ? esc(set.name) : 'My class: the DIALD cycle'}</h1>${set && set.id !== 'other' ? '<button class="icon-btn" id="cc-ren" title="Rename" aria-label="Rename this class plan"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></svg></button>' : ''}</div>
+          <p class="small" style="margin:0">${set ? `${plural(total, 'student')} · ${plural(plans.length, 'group plan')}${full ? ' · <span class="local-chip">🔒 Class file loaded on this computer</span>' : ''}` : `<span class="local-chip">🔒 On this computer only</span> ${esc(info.fileName)} · ${items.length} students · one group per quadrant`}</p></div>
+        <div class="row" style="gap:8px">${set ? '<a class="btn" href="#/plans">← My plans</a>' : '<a class="btn" href="#/class">← My class</a>'}</div>
       </div>
-      <div class="stages" role="tablist">${STAGES.map((s, i) => `<a role="tab" href="#/class/cycle?s=${i + 1}" class="${st === i ? 'on' : ''}" aria-selected="${st === i}"><span>0${i + 1}</span>${s}</a>`).join('')}</div>
+      <div class="stages" role="tablist">${STAGES.map((x, i) => `<a role="tab" href="${base}${i + 1}" class="${st === i ? 'on' : ''}" aria-selected="${st === i}"><span>0${i + 1}</span>${x}</a>`).join('')}</div>
       <div class="cc-body">${stages[st]()}</div>
-      <div class="cc-nav">${st > 0 ? `<a class="btn" href="#/class/cycle?s=${st}">← ${STAGES[st - 1]}</a>` : '<a class="btn" href="#/class">← My class</a>'}
-        ${st < 4 ? `<a class="btn primary" href="#/class/cycle?s=${st + 2}">Next: ${STAGES[st + 1]} →</a>` : '<a class="btn primary" href="#/plans">Go to My plans →</a>'}</div>
+      <div class="cc-nav">${st > 0 ? `<a class="btn" href="${base}${st}">← ${STAGES[st - 1]}</a>` : (set ? '<a class="btn" href="#/plans">← My plans</a>' : '<a class="btn" href="#/class">← My class</a>')}
+        ${st < 4 ? `<a class="btn primary" href="${base}${st + 2}">Next: ${STAGES[st + 1]} →</a>` : '<a class="btn primary" href="#/plans">Go to My plans →</a>'}</div>
     </div>
-    <div class="savebar" id="cc-save"></div>`;
+    ${set ? '' : '<div class="savebar" id="cc-save"></div>'}`;
 
+    const ren = main.querySelector('#cc-ren'); if (ren) ren.onclick = () => {
+      const h = main.querySelector('#cc-title');
+      h.outerHTML = `<form class="ren" id="cc-ren-f"><input maxlength="60" value="${esc(set.name)}" aria-label="Class plan name"><button class="btn primary" type="submit">Save</button><button class="btn ghost" type="button">Cancel</button><small class="err"></small></form>`;
+      ren.hidden = true; const f = main.querySelector('#cc-ren-f'), inp = f.querySelector('input'); inp.focus(); inp.select();
+      f.querySelector('[type=button]').onclick = () => render(main, st, ctx, setId);
+      f.onsubmit = async e => { e.preventDefault(); const t = inp.value.trim() || setName(), bad = ctx.titleProblem ? ctx.titleProblem(t) : '';
+        if (bad) { f.querySelector('small').textContent = bad; return; }
+        const { error } = await ctx.sb.from('group_plans').update({ set_name: t }).eq('set_id', set.id);
+        if (error) { f.querySelector('small').textContent = noSetCols(error) ? 'Run supabase-class-plans.sql once in Supabase first.' : error.message; return; }
+        ctx.toast('Class plan renamed.'); render(main, st, ctx, setId); };
+    };
     main.querySelectorAll('[data-filter]').forEach(a => a.onclick = () => R.setFilter(a.dataset.filter));
     main.querySelectorAll('[data-gstart]').forEach(b => b.onclick = () => {
       const q = b.dataset.gstart;
-      ctx.startGroup({ q, qName: E.QUADRANTS[q].name, members: by[q].map(R.memberFor), filtered: false });
+      ctx.startGroup(Object.assign({ q, qName: E.QUADRANTS[q].name, members: by[q].map(R.memberFor), filtered: false }, set ? { setId: set.id === 'other' ? null : set.id, setName: set.name } : {}));
     });
-    saveBar(main.querySelector('#cc-save'), Object.assign({}, ctx, { onSaved: () => render(main, st, ctx) }));
+    if (!set) saveBar(main.querySelector('#cc-save'), Object.assign({}, ctx, { onSaved: () => render(main, st, ctx) }));
   }
 
   // Sticky bar on My class and on the class cycle: save the class to My plans (one group plan per quadrant).
@@ -147,14 +201,15 @@
     const codes = new Set(items.map(x => x.s.code));
     const groups = QS.filter(q => by[q].length);
     let todo = groups.filter(q => !(res.data || []).some(g => g.quadrant === q && (g.members || []).some(m => codes.has(m.c))));
+    const found = findSet(res.data || [], items), sid = found ? found.setId : uuid(), sname = found ? found.setName : setName();
     const chips = qs => qs.map(q => `<span class="sv-chip"><span class="qchip" style="--c:${QC[q]}">${q}</span> ${plural(by[q].length, 'student')}</span>`).join('');
     const draw = mode => {
       if (!todo.length) {
-        el.innerHTML = `<div class="savebar-in"><span class="sv-ok">✓ This class is in My plans</span><span class="small">${plural(groups.length, 'group plan')}, one per quadrant. Enter rubric scores there at weeks 1, 6, and 12.</span><a class="btn primary" href="#/plans">Open My plans →</a></div>`;
+        el.innerHTML = `<div class="savebar-in"><span class="sv-ok">✓ Saved in My plans</span><span class="small">${found ? '“' + esc(found.setName) + '”' : plural(groups.length, 'group plan')} · one group per quadrant.</span>${found ? `<a class="btn primary" href="#/cycle/${encodeURIComponent(found.setId)}?s=4">Open the class plan →</a>` : '<a class="btn primary" href="#/plans">Open My plans →</a>'}</div>`;
         return;
       }
       if (mode === 'confirm') {
-        el.innerHTML = `<div class="savebar-in sv-confirm"><div><b>Save ${plural(todo.length, 'group plan')} to My plans?</b><div class="sv-chips">${chips(todo)}</div><span class="small">Stage 1 route · week 1 starts today · only student codes are saved, never names.</span></div>
+        el.innerHTML = `<div class="savebar-in sv-confirm"><div><b>Save “${esc(sname)}” to My plans?</b> <span class="small">(${plural(todo.length, 'group plan')}; you can rename it later)</span><div class="sv-chips">${chips(todo)}</div><span class="small">Stage 1 route · week 1 starts today · only student codes are saved, never names.</span></div>
           <div class="row" style="gap:8px"><button class="btn primary" id="sv-yes" type="button">Yes, save to My plans</button><button class="btn ghost" id="sv-no" type="button">Cancel</button></div></div>`;
         el.querySelector('#sv-no').onclick = () => draw();
         el.querySelector('#sv-yes').onclick = async () => {
@@ -162,12 +217,12 @@
           const d = new Date(), today = new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
           const rows = todo.map(q => {
             const bs = by[q].map(x => R.band(x.s.grade)).filter(Boolean); const bd = bs.sort((p, n) => bs.filter(v => v === n).length - bs.filter(v => v === p).length)[0] || '6-8';
-            return { title: q + ' · ' + E.QUADRANTS[q].name, quadrant: q, band: bd, stage: 1, subgroup: '', start_date: today, members: by[q].map(x => ({ c: x.s.code, q })) };
+            return { title: q + ' · ' + E.QUADRANTS[q].name, quadrant: q, band: bd, stage: 1, subgroup: '', start_date: today, members: by[q].map(x => ({ c: x.s.code, q })), set_id: sid, set_name: sname };
           });
-          const { error } = await ctx.sb.from('group_plans').insert(rows);
+          const { error } = await insertPlans(ctx.sb, rows, ctx.toast);
           if (error) { ctx.toast(G.isSetupError(error) ? G.SETUP : 'Could not save: ' + error.message); draw('confirm'); return; }
-          ctx.toast(plural(rows.length, 'group plan') + ' saved to My plans.'); todo = []; draw();
-          if (ctx.onSaved) ctx.onSaved();
+          ctx.toast('Saved to My plans.'); todo = [];
+          if (ctx.onSaved) ctx.onSaved(); else saveBar(el, ctx);
         };
         return;
       }
@@ -178,5 +233,5 @@
     draw();
   }
 
-  window.DIALDClassCycle = { render, saveBar };
+  window.DIALDClassCycle = { render, saveBar, currentSet, insertPlans };
 })();

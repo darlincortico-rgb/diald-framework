@@ -829,7 +829,7 @@
     const noId = map.name == null && map.first == null && map.last == null && map.id == null;
     const show = FIELDS.filter(f => f.k !== 'name' || map.first == null);
     main.innerHTML = `<div class="dash"><div class="dash-head"><div class="dash-in"><div><div class="eyebrow">Analyze my file · step 2 of 2</div><h1>Check the columns</h1>
-      <p class="small"><span class="local-chip">🔒 On this computer only</span> ${esc(raw.fileName)} · ${raw.body.length} rows <span class="small" style="opacity:.6">· reader v27</span></p></div></div></div>
+      <p class="small"><span class="local-chip">🔒 On this computer only</span> ${esc(raw.fileName)} · ${raw.body.length} rows <span class="small" style="opacity:.6">· reader v28</span></p></div></div></div>
       <div class="dash-in"><div class="card">
         ${raw.widened ? `<p class="small"><b>Note:</b> your file has ${raw.widened} years in separate columns. DIALD turned them into one row per year.</p>` : ''}
         ${raw.unstacked ? `<p class="small"><b>Note:</b> your file keeps each learner's test history in one cell (as Ellevation does). DIALD split it by test date into one row per school year (a January 2026 test counts as 2025-26). If the file had no years-in-services column, DIALD counted the years of test history.</p>` : ''}

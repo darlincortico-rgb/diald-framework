@@ -1094,3 +1094,17 @@ label.btn{cursor:pointer;display:inline-flex;align-items:center}
 .sv-chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
 .sv-chip{background:#fff;border:1px solid var(--line);border-radius:999px;padding:3px 10px 3px 4px;font-size:14px}
 body:has(.savebar) #fb{bottom:104px}
+
+/* ---------- update 28: class plans ---------- */
+.plan-tabs{margin:14px 0 6px}
+.set-card{background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:18px 20px;margin:16px 0;border-top:5px solid var(--gold)}
+.set-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.set-head h2{margin:2px 0 2px;font-size:24px}
+.set-head h2 a{color:var(--navy);text-decoration:none}
+.set-head h2 a:hover{text-decoration:underline}
+.set-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.set-stages{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 14px}
+.set-stages a{border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:14px;font-weight:600;color:var(--navy);text-decoration:none;background:#f7fafc}
+.set-stages a span{color:var(--teal);margin-right:5px;font-size:12.5px}
+.set-stages a:hover{background:#eef8f6;border-color:var(--teal)}
+.cc-needfile{margin:0 0 16px}

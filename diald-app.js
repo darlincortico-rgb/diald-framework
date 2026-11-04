@@ -93,13 +93,14 @@
       location.hash = '#/login?next=' + encodeURIComponent(here);
       return;
     }
-    const map = { '': 'home', analyze: 'analyze', learner: 'analyze', class: 'analyze', plan: 'plans', group: 'plans', library: 'library', pathway: 'library', activity: 'library', plans: 'plans', help: 'help', framework: 'framework', states: '' };
+    const map = { '': 'home', analyze: 'analyze', learner: 'analyze', class: 'analyze', plan: 'plans', group: 'plans', cycle: 'plans', library: 'library', pathway: 'library', activity: 'library', plans: 'plans', help: 'help', framework: 'framework', states: '' };
     setNav(map[p] || '');
     if (p === 'profile') profilePage(q);
     else if (p === '') home();
     else if (p === 'analyze') trajectoryHub(q);
     else if (p === 'learner') analyzePage(q);
     else if (p === 'class' && parts[1] === 'cycle') classCycle(q);
+    else if (p === 'cycle') classCycle(q, decodeURIComponent(parts[1] || ''));
     else if (p === 'class') classPage();
     else if (p === 'library') { if (!window.DIALDLibUI || !window.DIALDLibUI.render(main, parts.slice(1), q)) notFound(); }
     else if (p === 'states') statesPage(q);
@@ -282,15 +283,22 @@
       openStudent: st => {
         openFromClass(st);
       },
-      startGroup: sb && user && window.DIALDGroups ? st => window.DIALDGroups.startDialog(st, { esc, sb, toast }) : null,
+      startGroup: groupStarter(),
       saveBar: window.DIALDClassCycle ? el => window.DIALDClassCycle.saveBar(el, { esc, sb: user ? sb : null, toast }) : null
     });
   }
-  function classCycle(q) {
+  // Group plans started from a class join that class's plan (one class plan per uploaded class).
+  function groupStarter() {
+    if (!(sb && user && window.DIALDGroups)) return null;
+    return async st => {
+      if (!st.setId && st.setId !== null && window.DIALDClassCycle) Object.assign(st, await window.DIALDClassCycle.currentSet(sb));
+      window.DIALDGroups.startDialog(st, { esc, sb, toast });
+    };
+  }
+  async function classCycle(q, setId) {
     if (!window.DIALDClassCycle) { location.hash = '#/class'; return; }
-    window.DIALDClassCycle.render(main, (Number(q.get('s')) || 1) - 1, {
-      esc, sb: user ? sb : null, toast, startGroup: sb && user && window.DIALDGroups ? st => window.DIALDGroups.startDialog(st, { esc, sb, toast }) : null
-    });
+    if (setId && !(await requireLogin('plans'))) return;
+    window.DIALDClassCycle.render(main, (Number(q.get('s')) || 1) - 1, { esc, sb: user ? sb : null, toast, titleProblem, startGroup: groupStarter() }, setId || null);
   }
   async function groupPage(id) {
     if (!(await requireLogin('plans'))) return;
@@ -1131,6 +1139,7 @@
     return true;
   }
 
+  let plansTab = (() => { try { return localStorage.getItem('diald-plans-tab') || 'class'; } catch (e) { return 'class'; } })();
   async function plansPage() {
     if (!(await requireLogin('plans'))) return;
     main.innerHTML = '<div class="page"><p>Loading…</p></div>';
@@ -1152,28 +1161,40 @@
           <td>${resp.length ? resp.map(x => `<span class="badge ${x}" style="font-size:12px;padding:3px 8px">${x}</span>`).join(' ') : '—'}</td>
           <td class="small">${new Date(r.updated_at).toLocaleDateString()}</td>
           <td><button class="btn ghost danger" data-del="${r.id}" data-n="${r.plan_number}">Delete</button></td></tr>`; }).join('')}</tbody></table>`;
-    const sections = ['Q1', 'Q2', 'Q3', 'Q4', ''].map(q => {
-      const gs = groups.filter(g => g.quadrant === q), ps = rows.filter(r => ((r.result && r.result.quadrant) || '') === q);
-      if (!gs.length && !ps.length) return '';
-      const students = gs.reduce((n, g) => n + (g.members || []).length, 0);
+    // Student plans, grouped by quadrant.
+    const studentSecs = ['Q1', 'Q2', 'Q3', 'Q4', ''].map(q => {
+      const ps = rows.filter(r => ((r.result && r.result.quadrant) || '') === q);
+      if (!ps.length) return '';
       return `<section class="q-sec" style="--c:${QC[q] || '#9fb0c0'}">
-        <h2>${q ? `<span class="qchip" style="--c:${QC[q]}">${q}</span> ${esc(E.QUADRANTS[q].name)}` : 'No profile yet'}
-          <small>${gs.length ? gs.length + ' group plan' + (gs.length > 1 ? 's' : '') + ' (' + students + ' students)' : ''}${gs.length && ps.length ? ' · ' : ''}${ps.length ? ps.length + ' student plan' + (ps.length > 1 ? 's' : '') : ''}</small></h2>
-        ${gs.length ? `<div class="gcards">${gs.map(g => G.cardHTML(g, esc)).join('')}</div>` : ''}
-        ${ps.length ? `<div class="card tbl-wrap">${table(ps)}</div>` : ''}
-      </section>`;
+        <h2>${q ? `<span class="qchip" style="--c:${QC[q]}">${q}</span> ${esc(E.QUADRANTS[q].name)}` : 'No profile yet'}<small>${ps.length} student plan${ps.length > 1 ? 's' : ''}</small></h2>
+        <div class="card tbl-wrap">${table(ps)}</div></section>`;
     }).join('');
+    const setCount = new Set(groups.map(g => g.set_id || 'other')).size;
+    let tab = plansTab; if (tab === 'class' && !groups.length && rows.length) tab = 'student'; if (tab === 'student' && !rows.length && groups.length) tab = 'class';
+    const sections = `<div class="tabs-inline plan-tabs" role="tablist">
+        <a href="#" data-ptab="class" class="${tab === 'class' ? 'on' : ''}">Class plans (${setCount})</a>
+        <a href="#" data-ptab="student" class="${tab === 'student' ? 'on' : ''}">Student plans (${rows.length})</a></div>
+      ${tab === 'class'
+        ? (groups.length ? G.setsHTML(groups, esc) : `<div class="card"><p>No class plans yet.</p><p class="small">Upload your class in <a href="#/class">My class</a> and choose <b>“+ Add this class to My plans”</b> at the bottom of the page. Each class plan keeps one group per quadrant and the full DIALD cycle.</p></div>`)
+        : (studentSecs || `<div class="card"><p>No student plans yet.</p><p class="small">Analyze a learner in <a href="#/analyze">Learner Trajectory</a>, or choose “Open →” next to a student in My class, then “Save as a plan”.</p></div>`)}`;
     const keys = R && (R.hasKeys() || named);
     main.innerHTML = `<div class="page">
       <div class="row" style="justify-content:space-between"><div><div class="eyebrow">Your workspace</div><h1>My plans</h1></div>
-        <div class="row" style="gap:8px"><a class="btn" href="#/class">+ Group plan (from My class)</a><a class="btn primary" href="#/analyze">+ New analysis</a></div></div>
+        <div class="row" style="gap:8px"><a class="btn" href="#/class">+ Class plan (upload a class)</a><a class="btn primary" href="#/analyze">+ New analysis</a></div></div>
       ${error ? `<div class="card"><p class="err">Could not load plans: ${esc(error.message)}</p></div>` : ''}
       ${gErr ? `<div class="privacy-note" style="margin:8px 0"><span>ℹ️</span><div class="small">${esc(gErr)}</div></div>` : ''}
-      ${sections || `<div class="card"><p>No saved plans yet.</p><ul class="small"><li><b>Group plan:</b> open <a href="#/class">My class</a>, then choose “+ Plan” next to a profile (Q1–Q4).</li><li><b>Student plan:</b> analyze a learner in <a href="#/analyze">Learner Trajectory</a> and choose “Save as a plan”.</li></ul></div>`}
+      ${sections}
       <div class="key-strip small"><span>🔒 Plans store codes, levels, scores, and the pathways you chose. Never student names or IDs. ${keys ? 'Names you see here are kept only on this computer.' : ''}</span>
         <span class="row" style="gap:8px">${keys ? '<button class="btn ghost small-btn" id="keysheet" type="button">⬇ Key sheet</button>' : ''}<label class="btn ghost small-btn">Load key sheet<input type="file" id="keyload" accept=".csv,.xlsx,.xls" hidden></label>${keys ? '<button class="btn ghost small-btn danger" id="keyforget" type="button">Forget names on this computer</button>' : ''}</span></div>
       <p class="small">Account options are in <a href="#/profile">Profile &amp; settings</a>.</p>
     </div>`;
+    $$('[data-ptab]').forEach(a => a.onclick = e => { e.preventDefault(); plansTab = a.dataset.ptab; try { localStorage.setItem('diald-plans-tab', plansTab); } catch (er) { /* ignore */ } plansPage(); });
+    $$('[data-setdel]').forEach(b => b.onclick = async e => {
+      e.preventDefault();
+      if (b.dataset.armed !== '1') { b.dataset.armed = '1'; b.textContent = 'Click again: delete all its group plans'; return; }
+      const { error: er } = await sb.from('group_plans').delete().eq('set_id', b.dataset.setdel);
+      if (er) toast('Could not delete: ' + er.message); else { toast('Class plan deleted.'); plansPage(); }
+    });
     const kl = $('#keyload'); if (kl) kl.onchange = async () => { try { const n = await R.loadKeySheet(kl.files[0]); toast(n ? 'Key sheet loaded: ' + n + ' codes.' : 'No codes found in this file.'); plansPage(); } catch (e) { toast(e.message || 'Could not read the key sheet.'); } };
     const kf = $('#keyforget'); if (kf) kf.onclick = () => { if (kf.dataset.armed !== '1') { kf.dataset.armed = '1'; kf.textContent = 'Download the key sheet first. Click again to forget'; return; } R.forgetKeys(); Object.keys(R.planNames()).forEach(k => R.forgetPlanName(k)); toast('Names removed from this computer.'); plansPage(); };
     $$('[data-del]').forEach(b => b.onclick = async () => {
@@ -1481,7 +1502,7 @@
           setTimeout(async () => {
             await loadProfile(); renderAcct();
             const p = parseHash().parts[0] || '';
-            if (!user || ['plans', 'plan', 'group', 'analyze', 'learner', 'class', 'pathway', 'login', 'profile'].includes(p) || (profileLoaded && !profile)) route();
+            if (!user || ['plans', 'plan', 'group', 'cycle', 'analyze', 'learner', 'class', 'pathway', 'login', 'profile'].includes(p) || (profileLoaded && !profile)) route();
           }, 0);
         }
       });

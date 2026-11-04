@@ -126,9 +126,10 @@
         go.disabled = true; go.textContent = 'Saving…';
         const rows = pick.map(g => ({
           title: (st.q + ' · ' + (split === 'none' ? st.qName : g.label)).slice(0, 60), quadrant: st.q, band: g.band, stage, subgroup: split === 'none' ? '' : g.label.slice(0, 40),
-          start_date: start, members: g.ms.map(m => ({ c: m.code, q: st.q }))
+          start_date: start, members: g.ms.map(m => ({ c: m.code, q: st.q })), ...(st.setId ? { set_id: st.setId, set_name: st.setName } : {})
         }));
-        const { data, error } = await sb.from('group_plans').insert(rows).select('id');
+        const CC = window.DIALDClassCycle;
+        const { data, error } = CC ? await CC.insertPlans(sb, rows, toast) : await sb.from('group_plans').insert(rows).select('id');
         if (error) { box.querySelector('#gd-msg').textContent = isSetupError(error) ? SETUP : 'Could not save: ' + error.message; recount(); return; }
         close(); toast(rows.length > 1 ? rows.length + ' group plans created.' : 'Group plan created.');
         location.hash = rows.length === 1 ? '#/group/' + data[0].id : '#/plans';
@@ -164,7 +165,7 @@
       const scoredN = sm.Positive + sm.Partial + sm.Limited;
       const lead = scoredN ? ['Positive', 'Partial', 'Limited'].sort((a, b) => sm[b] - sm[a])[0] : 'Not yet';
       main.innerHTML = `<div class="page group-page" style="--c:${QC[g.quadrant]}">
-        <a class="back-link" href="#/plans">← My plans</a>
+        <div class="row" style="gap:14px"><a class="back-link" href="#/plans">← My plans</a>${g.set_id ? `<a class="back-link" href="#/cycle/${encodeURIComponent(g.set_id)}?s=4">← ${esc(g.set_name || 'Class plan')}: the cycle</a>` : ''}</div>
         <div class="eyebrow" style="margin-top:8px">Group plan · <span class="qchip" style="--c:${QC[g.quadrant]}">${g.quadrant}</span> ${esc(E.QUADRANTS[g.quadrant].name)}</div>
         <div class="row" style="gap:10px;align-items:center"><h1 style="margin:4px 0" id="gp-title">${esc(g.title || g.quadrant + ' group')}</h1><button class="icon-btn" id="gp-ren" title="Rename" aria-label="Rename this plan"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></svg></button></div>
         <div class="gp-meta">
@@ -269,5 +270,26 @@
     window.addEventListener('hashchange', off);
   }
 
-  window.DIALDGroups = { startDialog, page, list, cardHTML, weekOf, nextCheck, response, summary, moved, SETUP, isSetupError };
+  // My plans → Class plans: the quadrant plans of one class, grouped, with the cycle one click away.
+  function setsHTML(groups, esc) {
+    const sets = new Map();
+    groups.forEach(g => { const k = g.set_id || 'other'; if (!sets.has(k)) sets.set(k, []); sets.get(k).push(g); });
+    const order = [...sets.entries()].sort((a, b) => (a[0] === 'other') - (b[0] === 'other') || String(b[1][0].created_at).localeCompare(String(a[1][0].created_at)));
+    const ST = ['Profile', 'Pattern', 'Focus', 'Response', 'Adaptation'];
+    return order.map(([k, gs]) => {
+      gs.sort((a, b) => a.quadrant.localeCompare(b.quadrant) || String(a.created_at).localeCompare(String(b.created_at)));
+      const name = k === 'other' ? 'Other group plans' : (gs[0].set_name || 'Class plan');
+      const n = new Set(gs.flatMap(g => (g.members || []).map(m => m.c))).size;
+      const href = i => `#/cycle/${encodeURIComponent(k)}?s=${i}`;
+      return `<section class="set-card">
+        <div class="set-head"><div><div class="eyebrow">Class plan · ${new Date(gs[0].created_at).toLocaleDateString()}</div>
+          <h2><a href="${href(1)}">${esc(name)}</a></h2><p class="small" style="margin:0">${n} student${n === 1 ? '' : 's'} · ${gs.length} group plan${gs.length === 1 ? '' : 's'}</p></div>
+          <div class="set-actions"><a class="btn primary" href="${href(4)}">Open the cycle →</a>${k !== 'other' ? `<button class="btn ghost danger small-btn" type="button" data-setdel="${esc(k)}">Delete class plan</button>` : ''}</div></div>
+        <nav class="set-stages" aria-label="Go to a stage">${ST.map((x, i) => `<a href="${href(i + 1)}"><span>0${i + 1}</span>${x}</a>`).join('')}</nav>
+        <div class="gcards">${gs.map(g => cardHTML(g, esc)).join('')}</div>
+      </section>`;
+    }).join('');
+  }
+
+  window.DIALDGroups = { startDialog, page, list, cardHTML, setsHTML, weekOf, nextCheck, response, summary, moved, SETUP, isSetupError };
 })();
