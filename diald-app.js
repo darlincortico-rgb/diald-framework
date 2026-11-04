@@ -815,6 +815,14 @@
           <table class="tbl lv-tbl"><thead><tr><th>Year</th>${DOMAINS.map(d => `<th>${DN[d]}</th>`).join('')}</tr></thead>
             <tbody>${rows.map((r, i) => `<tr><td>${esc(r.label)}</td>${DOMAINS.map(d => cell(r.levels[d], i ? rows[i - 1].levels[d] : null)).join('')}</tr>`).join('')}</tbody></table>
           <p class="small">▲ ▼ = level went up or down from the year before. The Profile is a description, not a judgment.</p>
+          ${has('ela') || has('bench') ? (() => {
+            const elaL = (st.academic && st.academic.levels) || ['Level 1', 'Level 2', 'Level 3', 'Level 4'], meets = (st.academic && st.academic.meets) || 3;
+            const lab = (v, arr) => (v == null || v === '' ? '—' : (arr[Math.round(v) - 1] || v));
+            return `<h3>Academic results by year</h3>
+            <table class="tbl lv-tbl"><thead><tr><th>Year</th>${has('ela') ? `<th>${esc((st.academic && st.academic.test) || 'State ELA test')}</th>` : ''}${has('bench') ? '<th>Reading benchmark</th>' : ''}</tr></thead>
+              <tbody>${rows.map(r => `<tr><td>${esc(r.label)}</td>${has('ela') ? `<td class="${r.levels.ela == null ? '' : r.levels.ela >= meets ? 'ac-ok' : 'ac-lo'}">${esc(lab(r.levels.ela, elaL))}</td>` : ''}${has('bench') ? `<td class="${r.levels.bench == null ? '' : r.levels.bench >= 3 ? 'ac-ok' : 'ac-lo'}">${esc(lab(r.levels.bench, E.BENCH))}${r.levels.bench != null ? ' benchmark' : ''}</td>` : ''}</tr>`).join('')}</tbody></table>
+            <p class="small">These results do not change the quadrant, which comes from the English language test. They show how the learner does in grade-level reading over time, and they are saved with the plan.</p>`;
+          })() : ''}
           <div class="row" style="margin-top:14px"><button class="btn primary" id="go-pattern">See the pattern →</button><button class="btn" id="edit-data" type="button">✎ Edit the data</button></div>
         </div>
       </div>
@@ -1211,8 +1219,10 @@
     $$('[data-setdel]').forEach(b => b.onclick = async e => {
       e.preventDefault();
       if (b.dataset.armed !== '1') { b.dataset.armed = '1'; b.textContent = 'Click again: delete all its group plans'; return; }
-      const { error: er } = await sb.from('group_plans').delete().eq('set_id', b.dataset.setdel);
-      if (er) toast('Could not delete: ' + er.message); else { toast('Class plan deleted.'); plansPage(); }
+      let er = null;
+      if (b.dataset.setdel === 'other') { for (const id of b.dataset.ids.split(',')) { const r = await sb.from('group_plans').delete().eq('id', id); if (r.error) { er = r.error; break; } } }
+      else ({ error: er } = await sb.from('group_plans').delete().eq('set_id', b.dataset.setdel));
+      if (er) toast('Could not delete: ' + er.message); else { toast('Deleted.'); plansPage(); }
     });
     const kl = $('#keyload'); if (kl) kl.onchange = async () => { try { const n = await R.loadKeySheet(kl.files[0]); toast(n ? 'Key sheet loaded: ' + n + ' codes.' : 'No codes found in this file.'); plansPage(); } catch (e) { toast(e.message || 'Could not read the key sheet.'); } };
     const kf = $('#keyforget'); if (kf) kf.onclick = () => { if (kf.dataset.armed !== '1') { kf.dataset.armed = '1'; kf.textContent = 'Download the key sheet first. Click again to forget'; return; } R.forgetKeys(); Object.keys(R.planNames()).forEach(k => R.forgetPlanName(k)); toast('Names removed from this computer.'); plansPage(); };

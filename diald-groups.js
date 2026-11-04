@@ -245,7 +245,14 @@
       });
       $$('[data-keep]').forEach(b => b.onclick = async () => { const m = g.members.find(x => x.c === b.dataset.keep); if (m) { m.a = b.dataset.q; await save({ members: g.members }, 'Kept in this plan.'); draw(); } });
       $$('[data-drop]').forEach(b => b.onclick = async () => { g.members = g.members.filter(x => x.c !== b.dataset.drop); await save({ members: g.members }, 'Removed from this plan.'); draw(); });
-      const kf = $('#gp-key'); if (kf) kf.onchange = async () => { try { const n = await R().loadKeySheet(kf.files[0]); toast(n ? 'Key sheet loaded.' : 'No codes found in this file.'); draw(); } catch (e) { toast(e.message); } };
+      const kf = $('#gp-key'); if (kf) kf.onchange = async () => {
+        try {
+          const n = await R().loadKeySheet(kf.files[0]);
+          const hit = g.members.filter(m => R().nameFor(m.c)).length;
+          toast(!n ? 'No codes found in this file.' : hit ? 'Key sheet loaded: ' + hit + ' of ' + g.members.length + ' names found.' : 'This key sheet does not have the codes of this plan. Use the key sheet you downloaded when you saved this class.');
+          draw();
+        } catch (e) { toast(e.message); }
+      };
       $('#gp-start').onchange = async e => { if (e.target.value && await save({ start_date: e.target.value }, 'Start date saved.')) draw(); };
       $('#gp-del').onclick = async () => {
         const b = $('#gp-del'); if (b.dataset.armed !== '1') { b.dataset.armed = '1'; b.textContent = 'Click again to delete'; return; }
@@ -284,7 +291,7 @@
       return `<section class="set-card">
         <div class="set-head"><div><div class="eyebrow">Class plan · ${new Date(gs[0].created_at).toLocaleDateString()}</div>
           <h2><a href="${href(1)}">${esc(name)}</a></h2><p class="small" style="margin:0">${n} student${n === 1 ? '' : 's'} · ${gs.length} group plan${gs.length === 1 ? '' : 's'}</p></div>
-          <div class="set-actions"><a class="btn primary" href="${href(4)}">Open the cycle →</a>${k !== 'other' ? `<button class="btn ghost danger small-btn" type="button" data-setdel="${esc(k)}">Delete class plan</button>` : ''}</div></div>
+          <div class="set-actions"><a class="btn primary" href="${href(4)}">Open the cycle →</a><button class="btn ghost danger small-btn" type="button" data-setdel="${esc(k)}" data-ids="${gs.map(g => g.id).join(',')}">Delete ${k === 'other' ? 'these plans' : 'class plan'}</button></div></div>
         <nav class="set-stages" aria-label="Go to a stage">${ST.map((x, i) => `<a href="${href(i + 1)}"><span>0${i + 1}</span>${x}</a>`).join('')}</nav>
         <div class="gcards">${gs.map(g => cardHTML(g, esc)).join('')}</div>
       </section>`;

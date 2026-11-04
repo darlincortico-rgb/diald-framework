@@ -398,6 +398,9 @@
       const c = String(r[ci] || '').trim().toUpperCase(), t = ti < 0 ? 'student' : String(r[ti] || '').trim().toLowerCase();
       if (t === 'plan' && /^[0-9A-F]{8}$/.test(c)) { pn['pfx:' + c] = String(r[ni] || '').trim(); n++; return; }
       if (!/^[A-Z0-9]{3}-[A-Z0-9]{3}$/.test(c)) return;
+      // The key sheet is the source of truth: drop any other code this browser made for the same student.
+      const nid = ii < 0 ? '' : String(r[ii] || '').trim().toLowerCase(), nn = ni < 0 ? '' : normN(r[ni]);
+      Object.keys(rows).forEach(k => { if (k !== c && ((nid && String(rows[k].i || '').toLowerCase() === nid) || (!nid && nn && normN(rows[k].n) === nn))) delete rows[k]; });
       rows[c] = { n: ni < 0 ? '' : String(r[ni] || '').trim(), i: ii < 0 ? '' : String(r[ii] || '').trim(), g: gi < 0 ? '' : String(r[gi] || '').trim() }; n++;
     });
     ls.set(localStorage, CODES, rows); ls.set(localStorage, PLANNAMES, pn);
@@ -536,7 +539,7 @@
   }
 
   /* ---------- views ---------- */
-  let ui = { view: 'quad', prev: true, q: '', risk: '', group: '', grade: '', search: '', support: '', byQ: false, pending: null, sel: '' };
+  let ui = { view: 'quad', prev: true, q: '', risk: '', group: '', grade: '', search: '', support: '', ela: '', bench: '', byQ: false, pending: null, sel: '' };
   // "English level" for subgroups: the overall level when the file has it, otherwise the lowest domain.
   function englishLevel(last) {
     if (last.overall != null) return { n: Math.floor(last.overall), how: 'overall' };
@@ -554,8 +557,14 @@
     const items = data.students.map(s => { const r = analyzeStudent(s, high); return { s, r, last: s.periods[s.periods.length - 1] }; }).filter(x => x.r.quadrant);
     const groups = [...new Set(items.map(x => x.s.group).filter(Boolean))].sort();
     const grades = [...new Set(items.map(x => x.s.grade).filter(Boolean))].sort((a, b) => (a === 'K' ? 0 : +a) - (b === 'K' ? 0 : +b));
+    // Latest state ELA and benchmark results (they do not change the quadrant).
+    const latest = (st, k) => { for (let i = st.periods.length - 1; i >= 0; i--) if (st.periods[i][k] != null) return st.periods[i][k]; return null; };
+    items.forEach(x => { x.ela = latest(x.s, 'ela'); x.bench = latest(x.s, 'bench'); });
+    const hasEla = items.some(x => x.ela != null), hasBench = items.some(x => x.bench != null);
+    const AC = S.get(data.state || '').academic || {}, ELAL = AC.levels || ['Level 1', 'Level 2', 'Level 3', 'Level 4'], MEETS = AC.meets || 3, ELATEST = AC.test || 'State ELA test';
+        const matchAc = (v, f, meets) => !f || (v != null && (f === 'lo' ? v < meets : f === 'hi' ? v >= meets : Math.round(v) === Number(f)));
     const term = ui.search.toLowerCase().trim();
-    const f = items.filter(x => (!ui.q || x.r.quadrant.id === ui.q) && (!ui.risk || x.r.risk.level === ui.risk) && (!ui.group || x.s.group === ui.group) && (!ui.grade || x.s.grade === ui.grade) && (!term || x.s.name.toLowerCase().includes(term) || String(x.s.code).toLowerCase().includes(term)) && (!ui.support || (ui.support === 'iep' ? x.s.iep : ui.support === '504' ? x.s.s504 : (x.s.iep || x.s.s504))))
+    const f = items.filter(x => (!ui.q || x.r.quadrant.id === ui.q) && (!ui.risk || x.r.risk.level === ui.risk) && (!ui.group || x.s.group === ui.group) && (!ui.grade || x.s.grade === ui.grade) && (!term || x.s.name.toLowerCase().includes(term) || String(x.s.code).toLowerCase().includes(term)) && (!ui.support || (ui.support === 'iep' ? x.s.iep : ui.support === '504' ? x.s.s504 : (x.s.iep || x.s.s504))) && matchAc(x.ela, ui.ela, MEETS) && matchAc(x.bench, ui.bench, 3))
       .sort((a, b) => SIG_ORDER[a.r.risk.level] - SIG_ORDER[b.r.risk.level] || a.s.name.localeCompare(b.s.name));
     if (ui.sel && !f.some(x => x.s.key === ui.sel)) ui.sel = '';
     const hasSupport = items.some(x => x.s.iep != null || x.s.s504 != null);
@@ -590,6 +599,7 @@
     const row = x => `<tr data-key="${esc(x.s.key)}" tabindex="0" class="${ui.sel === x.s.key ? 'sel' : ''}">
       <td><b>${who(x)}</b>${x.s.noName ? '' : ` <small class="code">${esc(x.s.code)}</small>`}${x.s.iep ? ' <span class="chip iep" title="Has an IEP (special education)">IEP</span>' : ''}${x.s.s504 ? ' <span class="chip iep" title="Has a 504 plan">504</span>' : ''}</td><td>${esc(x.s.grade || '—')}</td>${groups.length ? `<td>${esc(x.s.group || '—')}</td>` : ''}<td class="small">${esc(x.last.label)}</td>
       ${DOMAINS.map(d => `<td class="lv ${x.last[d] != null && x.last[d] >= high ? 'hi' : 'lo'}">${x.last[d] == null ? '—' : x.last[d]}</td>`).join('')}
+      ${hasEla ? `<td class="small ${x.ela == null ? '' : x.ela >= MEETS ? 'ac-ok' : 'ac-lo'}" title="${esc(x.ela == null ? 'No result' : ELAL[Math.round(x.ela) - 1] || '')}">${x.ela == null ? '—' : 'L' + Math.round(x.ela)}</td>` : ''}${hasBench ? `<td class="small ${x.bench == null ? '' : x.bench >= 3 ? 'ac-ok' : 'ac-lo'}">${x.bench == null ? '—' : esc(E.BENCH[Math.round(x.bench) - 1] || '')}</td>` : ''}
       <td><span class="qchip" style="--c:${QCOLOR[x.r.quadrant.id]}">${x.r.quadrant.id}</span></td>
       <td class="small">${x.r.dims.persistence.run >= 2 && (x.r.dims.persistence.direction === 'oral' || x.r.dims.persistence.direction === 'literacy') ? (x.r.dims.persistence.direction === 'oral' ? 'Oral ahead ' : 'Literacy ahead ') + x.r.dims.persistence.run + ' yrs' : '—'}</td>
       <td><span class="badge ${x.r.risk.level}" style="font-size:12px;padding:3px 8px">${esc(x.r.risk.label)}</span>${x.r.risk.flags.mayExit ? ' <span class="chip good" title="Meets the exit criteria in this file">Exit?</span>' : ''}</td>
@@ -598,7 +608,7 @@
     const tbody = () => {
       const empty = `<tr><td colspan="13" class="small">No students match these filters.</td></tr>`;
       if (!ui.byQ) return f.map(row).join('') || empty;
-      const cols = 8 + DOMAINS.length + (groups.length ? 1 : 0);
+      const cols = 8 + DOMAINS.length + (groups.length ? 1 : 0) + (hasEla ? 1 : 0) + (hasBench ? 1 : 0);
       return ['Q1', 'Q2', 'Q3', 'Q4'].map(q => {
         const xs = f.filter(x => x.r.quadrant.id === q); if (!xs.length) return '';
         const bands = xs.map(x => band(x.s.grade)).filter(Boolean); const bd = bands.sort((p, n) => bands.filter(v => v === n).length - bands.filter(v => v === p).length)[0] || '6-8';
@@ -658,12 +668,14 @@
               ${grades.length ? `<div><label for="r-grade">Grade</label><select id="r-grade">${opt(grades, ui.grade, 'All grades')}</select></div>` : ''}
               <div><label for="r-q">Profile</label><select id="r-q">${opt(['Q1', 'Q2', 'Q3', 'Q4'], ui.q, 'All profiles')}</select></div>
               ${hasSupport ? `<div><label for="r-support">IEP / 504</label><select id="r-support"><option value="">All</option><option value="any" ${ui.support === 'any' ? 'selected' : ''}>IEP or 504</option><option value="iep" ${ui.support === 'iep' ? 'selected' : ''}>IEP</option><option value="504" ${ui.support === '504' ? 'selected' : ''}>504</option></select></div>` : ''}
+              ${hasEla ? `<div><label for="r-ela" title="${esc(ELATEST)}">State ELA</label><select id="r-ela"><option value="">All</option><option value="lo" ${ui.ela === 'lo' ? 'selected' : ''}>Below standard</option><option value="hi" ${ui.ela === 'hi' ? 'selected' : ''}>Met or above</option>${ELAL.map((l, i) => `<option value="${i + 1}" ${ui.ela === String(i + 1) ? 'selected' : ''}>Level ${i + 1} · ${esc(l)}</option>`).join('')}</select></div>` : ''}
+              ${hasBench ? `<div><label for="r-bench">Benchmark</label><select id="r-bench"><option value="">All</option><option value="lo" ${ui.bench === 'lo' ? 'selected' : ''}>Below grade level</option><option value="hi" ${ui.bench === 'hi' ? 'selected' : ''}>At or above</option>${E.BENCH.map((l, i) => `<option value="${i + 1}" ${ui.bench === String(i + 1) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>` : ''}
               <div><label for="r-risk">Signal</label><select id="r-risk"><option value="">All</option>${['Horizon', 'Persistent', 'Emerging', 'None', 'NA'].map(k => `<option value="${k}" ${ui.risk === k ? 'selected' : ''}>${esc(sigLabel(k))}</option>`).join('')}</select></div>
             </div>
             <div class="grp-bar"><label class="row small" style="gap:6px;font-weight:600;margin:0"><input type="checkbox" id="r-byq" style="width:auto" ${ui.byQ ? 'checked' : ''}> Group students by profile (Q1–Q4)</label>
               ${ui.byQ ? '<button type="button" class="btn ghost" id="r-csv">⬇ Download groups (CSV)</button>' : ''}</div>
             <div class="tbl-wrap"><table class="tbl roster">
-              <thead><tr><th>Student</th><th>Grade</th>${groups.length ? '<th>Group</th>' : ''}<th>Latest</th>${DOMAINS.map(d => `<th title="${DNAME[d]}">${D1[d]}</th>`).join('')}<th>Profile</th><th>Pattern</th><th>Signal</th><th title="Concerns across time in services, English growth, benchmark, and state ELA test">Criteria</th><th></th></tr></thead>
+              <thead><tr><th>Student</th><th>Grade</th>${groups.length ? '<th>Group</th>' : ''}<th>Latest</th>${DOMAINS.map(d => `<th title="${DNAME[d]}">${D1[d]}</th>`).join('')}${hasEla ? `<th title="${esc(ELATEST)}, latest result">ELA</th>` : ''}${hasBench ? '<th title="Reading benchmark, latest result">Bench.</th>' : ''}<th>Profile</th><th>Pattern</th><th>Signal</th><th title="Concerns across time in services, English growth, benchmark, and state ELA test">Criteria</th><th></th></tr></thead>
               <tbody>${tbody()}</tbody></table></div>
             <p class="small">Click a row to see the student on the chart. “Open →” opens the full profile.</p>
           </div>
@@ -712,7 +724,7 @@
     const pv = $('#r-prev'); if (pv) pv.onchange = () => { ui.prev = pv.checked; rerender(); };
     $$('[data-q]').forEach(b => b.onclick = () => { ui.q = ui.q === b.dataset.q ? '' : b.dataset.q; rerender(); });
     const allq = $('#r-allq'); if (allq) allq.onclick = e => { e.preventDefault(); ui.q = ''; rerender(); };
-    [['#r-group', 'group'], ['#r-grade', 'grade'], ['#r-q', 'q'], ['#r-risk', 'risk'], ['#r-support', 'support']].forEach(([id, k]) => { const el = $(id); if (el) el.onchange = () => { ui[k] = el.value; rerender(); }; });
+    [['#r-group', 'group'], ['#r-grade', 'grade'], ['#r-q', 'q'], ['#r-risk', 'risk'], ['#r-support', 'support'], ['#r-ela', 'ela'], ['#r-bench', 'bench']].forEach(([id, k]) => { const el = $(id); if (el) el.onchange = () => { ui[k] = el.value; rerender(); }; });
     const bq = $('#r-byq'); if (bq) bq.onchange = () => { ui.byQ = bq.checked; rerender(); };
     const csv = $('#r-csv'); if (csv) csv.onclick = () => {
       const lines = [['Profile', 'Profile name', 'Code', 'Student', 'Grade', 'Group', 'Signal'].map(csvq).join(',')];
@@ -837,10 +849,11 @@
     const noId = map.name == null && map.first == null && map.last == null && map.id == null;
     const show = FIELDS.filter(f => f.k !== 'name' || map.first == null);
     main.innerHTML = `<div class="dash"><div class="dash-head"><div class="dash-in"><div><div class="eyebrow">Analyze my file · step 2 of 2</div><h1>Check the columns</h1>
-      <p class="small"><span class="local-chip">🔒 On this computer only</span> ${esc(raw.fileName)} · ${raw.body.length} rows <span class="small" style="opacity:.6">· reader v29</span></p></div></div></div>
+      <p class="small"><span class="local-chip">🔒 On this computer only</span> ${esc(raw.fileName)} · ${raw.body.length} rows <span class="small" style="opacity:.6">· reader v30</span></p></div></div></div>
       <div class="dash-in"><div class="card">
         ${raw.widened ? `<p class="small"><b>Note:</b> your file has ${raw.widened} years in separate columns. DIALD turned them into one row per year.</p>` : ''}
         ${raw.unstacked ? `<p class="small"><b>Note:</b> your file keeps each learner's test history in one cell (as Ellevation does). DIALD split it by test date into one row per school year (a January 2026 test counts as 2025-26). If the file had no years-in-services column, DIALD counted the years of test history.</p>` : ''}
+        <div class="notice-ok small need-key"><b>Saved a class plan before?</b> Load the key sheet you downloaded, so your students keep the same codes and your plans find them. ${hasKeys() ? '<span class="chip good">Key sheet loaded ✓</span>' : ''} <label class="btn ghost small-btn">Load key sheet<input type="file" id="m-key" accept=".csv,.xlsx,.xls" hidden></label></div>
         <p>${ui.pending.remembered ? 'DIALD remembered how this kind of file is organized.' : 'DIALD matched these columns by their names.'} Fix anything that is wrong, then choose <b>Analyze</b>. Fields marked 🔒 are used only on this computer.</p>
         <div class="tbl-wrap"><table class="tbl map-tbl"><thead><tr><th>DIALD needs</th><th>Column in your file</th><th>Example</th></tr></thead><tbody>
         ${show.map(f => `<tr class="${f.required && map[f.k] == null ? 'need' : ''}"><td>${f.local ? '🔒 ' : ''}${esc(f.label)}${f.required ? ' <span class="req">required</span>' : ''}</td>
@@ -865,6 +878,7 @@
       mappingView(main, ctx);
     });
     $('#m-back').onclick = () => { ui.pending = null; render(main, ctx); };
+    const mk = $('#m-key'); if (mk) mk.onchange = async () => { try { const n = await loadKeySheet(mk.files[0]); ctx.toast(n ? 'Key sheet loaded: ' + n + ' codes.' : 'No codes found in this file.'); mappingView(main, ctx); } catch (e) { ctx.toast(e.message); } };
     $('#m-state').onchange = () => {
       ui.pending.state = $('#m-state').value;
       const y = S.get(ui.pending.state).ltel.years; if ([5, 6, 7].includes(y)) $('#m-hz').value = String(y);
@@ -877,7 +891,7 @@
       if (!built.students.length) { $('#m-msg').textContent = 'No rows with levels were found. Check the level columns.'; return; }
       built.keep = $('#m-keep').checked; built.horizon = Number($('#m-hz').value); built.state = $('#m-state').value;
       ui.reused = assignCodes(built.students);
-      data = built; ui = { view: 'quad', prev: true, q: '', risk: '', group: '', grade: '', search: '', support: '', byQ: false, pending: null, sel: '', reused: ui.reused };
+      data = built; ui = { view: 'quad', prev: true, q: '', risk: '', group: '', grade: '', search: '', support: '', ela: '', bench: '', byQ: false, pending: null, sel: '', reused: ui.reused };
       persist(); render(main, ctx); window.scrollTo(0, 0);
     };
   }

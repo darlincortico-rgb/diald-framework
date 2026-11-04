@@ -1108,3 +1108,5 @@ body:has(.savebar) #fb{bottom:104px}
 .set-stages a span{color:var(--teal);margin-right:5px;font-size:12.5px}
 .set-stages a:hover{background:#eef8f6;border-color:var(--teal)}
 .cc-needfile{margin:0 0 16px}
+.ac-ok{color:var(--good);font-weight:700}.ac-lo{color:var(--bad);font-weight:700}
+.need-key{margin:0 0 14px}
