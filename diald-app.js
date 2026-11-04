@@ -282,13 +282,14 @@
       openStudent: st => {
         openFromClass(st);
       },
-      startGroup: sb && user && window.DIALDGroups ? st => window.DIALDGroups.startDialog(st, { esc, sb, toast }) : null
+      startGroup: sb && user && window.DIALDGroups ? st => window.DIALDGroups.startDialog(st, { esc, sb, toast }) : null,
+      saveBar: window.DIALDClassCycle ? el => window.DIALDClassCycle.saveBar(el, { esc, sb: user ? sb : null, toast }) : null
     });
   }
   function classCycle(q) {
     if (!window.DIALDClassCycle) { location.hash = '#/class'; return; }
     window.DIALDClassCycle.render(main, (Number(q.get('s')) || 1) - 1, {
-      esc, sb, toast, startGroup: sb && user && window.DIALDGroups ? st => window.DIALDGroups.startDialog(st, { esc, sb, toast }) : null
+      esc, sb: user ? sb : null, toast, startGroup: sb && user && window.DIALDGroups ? st => window.DIALDGroups.startDialog(st, { esc, sb, toast }) : null
     });
   }
   async function groupPage(id) {

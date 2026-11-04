@@ -84,7 +84,7 @@
       // 04 Response: start plans and monitor them
       () => `<div class="card cc-intro"><div class="eyebrow">04 · Response</div><h2>Start a plan for each group and monitor it</h2>
           <p>A group plan follows the route for 12 weeks. Enter the rubric scores at weeks 1, 6, and 12 to see who is responding. DIALD saves only student codes and scores.</p>
-          ${ctx.startGroup && !plans.length && !planErr ? `<button class="btn primary" type="button" id="cc-all">Create one plan per quadrant (${QS.filter(q => by[q].length).length})</button>` : ''}
+          <p class="small" style="margin:0">To save one plan per quadrant, use <b>“Add this class to My plans”</b> at the bottom of the page.</p>
           ${planErr ? `<p class="err small">${esc(planErr)}</p>` : ''}</div>
         <div class="cc-grid">${QS.map(q => {
           const xs = by[q]; const gs = plans.filter(g => g.quadrant === q);
@@ -122,26 +122,61 @@
       <div class="cc-body">${stages[st]()}</div>
       <div class="cc-nav">${st > 0 ? `<a class="btn" href="#/class/cycle?s=${st}">← ${STAGES[st - 1]}</a>` : '<a class="btn" href="#/class">← My class</a>'}
         ${st < 4 ? `<a class="btn primary" href="#/class/cycle?s=${st + 2}">Next: ${STAGES[st + 1]} →</a>` : '<a class="btn primary" href="#/plans">Go to My plans →</a>'}</div>
-    </div>`;
+    </div>
+    <div class="savebar" id="cc-save"></div>`;
 
     main.querySelectorAll('[data-filter]').forEach(a => a.onclick = () => R.setFilter(a.dataset.filter));
     main.querySelectorAll('[data-gstart]').forEach(b => b.onclick = () => {
       const q = b.dataset.gstart;
       ctx.startGroup({ q, qName: E.QUADRANTS[q].name, members: by[q].map(R.memberFor), filtered: false });
     });
-    const all = main.querySelector('#cc-all'); if (all) all.onclick = async () => {
-      if (all.dataset.armed !== '1') { all.dataset.armed = '1'; all.textContent = 'Click again: create ' + QS.filter(q => by[q].length).length + ' plans (Stage 1, starting today)'; return; }
-      all.disabled = true; all.textContent = 'Saving…';
-      const d = new Date(), today = new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
-      const rows = QS.filter(q => by[q].length).map(q => {
-        const bs = by[q].map(x => R.band(x.s.grade)).filter(Boolean); const b = bs.sort((p, n) => bs.filter(v => v === n).length - bs.filter(v => v === p).length)[0] || '6-8';
-        return { title: q + ' · ' + E.QUADRANTS[q].name, quadrant: q, band: b, stage: 1, subgroup: '', start_date: today, members: by[q].map(x => ({ c: x.s.code, q })) };
-      });
-      const { error } = await ctx.sb.from('group_plans').insert(rows);
-      if (error) { ctx.toast(G.isSetupError(error) ? G.SETUP : 'Could not save: ' + error.message); all.disabled = false; all.textContent = 'Try again'; return; }
-      ctx.toast(rows.length + ' group plans created.'); render(main, st, ctx);
-    };
+    saveBar(main.querySelector('#cc-save'), Object.assign({}, ctx, { onSaved: () => render(main, st, ctx) }));
   }
 
-  window.DIALDClassCycle = { render };
+  // Sticky bar on My class and on the class cycle: save the class to My plans (one group plan per quadrant).
+  async function saveBar(el, ctx) {
+    if (!el) return;
+    const { esc } = ctx, R = window.DIALDRoster, G = window.DIALDGroups;
+    const items = R ? R.analyzedItems() : [];
+    if (!items.length) { el.remove(); return; }
+    if (!ctx.sb || !G) { el.innerHTML = '<div class="savebar-in small"><a class="btn primary" href="#/login?next=class">Sign in to save this class</a> Your file stays on this page while you sign in.</div>'; return; }
+    el.innerHTML = '<div class="savebar-in small">Checking My plans…</div>';
+    const by = {}; QS.forEach(q => { by[q] = items.filter(x => x.r.quadrant.id === q); });
+    const res = await G.list(ctx.sb);
+    if (res.error) { el.innerHTML = `<div class="savebar-in small">${esc(G.isSetupError(res.error) ? G.SETUP : 'Could not check My plans: ' + res.error.message)}</div>`; return; }
+    const codes = new Set(items.map(x => x.s.code));
+    const groups = QS.filter(q => by[q].length);
+    let todo = groups.filter(q => !(res.data || []).some(g => g.quadrant === q && (g.members || []).some(m => codes.has(m.c))));
+    const chips = qs => qs.map(q => `<span class="sv-chip"><span class="qchip" style="--c:${QC[q]}">${q}</span> ${plural(by[q].length, 'student')}</span>`).join('');
+    const draw = mode => {
+      if (!todo.length) {
+        el.innerHTML = `<div class="savebar-in"><span class="sv-ok">✓ This class is in My plans</span><span class="small">${plural(groups.length, 'group plan')}, one per quadrant. Enter rubric scores there at weeks 1, 6, and 12.</span><a class="btn primary" href="#/plans">Open My plans →</a></div>`;
+        return;
+      }
+      if (mode === 'confirm') {
+        el.innerHTML = `<div class="savebar-in sv-confirm"><div><b>Save ${plural(todo.length, 'group plan')} to My plans?</b><div class="sv-chips">${chips(todo)}</div><span class="small">Stage 1 route · week 1 starts today · only student codes are saved, never names.</span></div>
+          <div class="row" style="gap:8px"><button class="btn primary" id="sv-yes" type="button">Yes, save to My plans</button><button class="btn ghost" id="sv-no" type="button">Cancel</button></div></div>`;
+        el.querySelector('#sv-no').onclick = () => draw();
+        el.querySelector('#sv-yes').onclick = async () => {
+          const b = el.querySelector('#sv-yes'); b.disabled = true; b.textContent = 'Saving…';
+          const d = new Date(), today = new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
+          const rows = todo.map(q => {
+            const bs = by[q].map(x => R.band(x.s.grade)).filter(Boolean); const bd = bs.sort((p, n) => bs.filter(v => v === n).length - bs.filter(v => v === p).length)[0] || '6-8';
+            return { title: q + ' · ' + E.QUADRANTS[q].name, quadrant: q, band: bd, stage: 1, subgroup: '', start_date: today, members: by[q].map(x => ({ c: x.s.code, q })) };
+          });
+          const { error } = await ctx.sb.from('group_plans').insert(rows);
+          if (error) { ctx.toast(G.isSetupError(error) ? G.SETUP : 'Could not save: ' + error.message); draw('confirm'); return; }
+          ctx.toast(plural(rows.length, 'group plan') + ' saved to My plans.'); todo = []; draw();
+          if (ctx.onSaved) ctx.onSaved();
+        };
+        return;
+      }
+      const done = groups.length - todo.length;
+      el.innerHTML = `<div class="savebar-in"><button class="btn primary" id="sv-add" type="button">+ Add this class to My plans</button><span class="small">${done ? done + ' of ' + groups.length + ' groups are already saved. This adds ' + plural(todo.length, 'more plan') + '.' : 'Creates ' + plural(todo.length, 'group plan') + ', one per quadrant. You can split them into subgroups later.'}</span></div>`;
+      el.querySelector('#sv-add').onclick = () => draw('confirm');
+    };
+    draw();
+  }
+
+  window.DIALDClassCycle = { render, saveBar };
 })();

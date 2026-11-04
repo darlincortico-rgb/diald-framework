@@ -1089,3 +1089,8 @@ label.btn{cursor:pointer;display:inline-flex;align-items:center}
 .cc-plans{display:flex;flex-direction:column;gap:8px;margin:10px 0}
 .cc-nav{display:flex;justify-content:space-between;gap:10px;margin-top:22px;flex-wrap:wrap}
 @media (max-width:860px){.cc-grid{grid-template-columns:1fr}.cc-dl{grid-template-columns:1fr;gap:2px}.cc-dl dd{margin-bottom:6px}}
+.sv-ok{font-weight:800;color:var(--good);font-size:16.5px}
+.sv-confirm{justify-content:space-between;background:#fffaf0;border:1px solid #f0d49b;border-radius:12px;padding:10px 14px}
+.sv-chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+.sv-chip{background:#fff;border:1px solid var(--line);border-radius:999px;padding:3px 10px 3px 4px;font-size:14px}
+body:has(.savebar) #fb{bottom:104px}
