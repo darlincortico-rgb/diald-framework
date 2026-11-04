@@ -93,7 +93,7 @@
       location.hash = '#/login?next=' + encodeURIComponent(here);
       return;
     }
-    const map = { '': 'home', analyze: 'analyze', learner: 'analyze', class: 'analyze', plan: 'plans', library: 'library', pathway: 'library', activity: 'library', plans: 'plans', help: 'help', framework: 'framework', states: '' };
+    const map = { '': 'home', analyze: 'analyze', learner: 'analyze', class: 'analyze', plan: 'plans', group: 'plans', library: 'library', pathway: 'library', activity: 'library', plans: 'plans', help: 'help', framework: 'framework', states: '' };
     setNav(map[p] || '');
     if (p === 'profile') profilePage(q);
     else if (p === '') home();
@@ -107,6 +107,7 @@
     else if (p === 'activity') { if (!window.DIALDLibUI.activityPage(main, parts[1], q)) notFound(); }
     else if (p === 'plans') plansPage();
     else if (p === 'plan') openPlan(parts[1]);
+    else if (p === 'group') groupPage(parts[1]);
     else if (p === 'login') loginPage(q);
     else if (p === 'reset') resetPage();
     else if (p === 'privacy') privacyPage();
@@ -279,8 +280,13 @@
       ai: C.aiUrl && user && sb ? { ask: askAI, format: aiFormat, left: () => sb.rpc('ai_credits_left').then(({ data }) => data) } : null,
       openStudent: st => {
         openFromClass(st);
-      }
+      },
+      startGroup: sb && user && window.DIALDGroups ? st => window.DIALDGroups.startDialog(st, { esc, sb, toast }) : null
     });
+  }
+  async function groupPage(id) {
+    if (!(await requireLogin('plans'))) return;
+    window.DIALDGroups.page(main, id, { esc, sb, toast, titleProblem });
   }
   function openFromClass(st) {
     A = { planId: null, planNumber: null, inputs: st.inputs, ran: true, stage: 0, selected: [], progress: [], dirty: true, localName: st.name, support: st.support || null };
@@ -1094,8 +1100,8 @@
     main.innerHTML = '<div class="page"><p>Loading plan…</p></div>';
     const { data, error } = await sb.from('plans').select('*').eq('id', id).single();
     if (error || !data) { main.innerHTML = '<div class="page"><div class="card"><p>This plan was not found.</p><a class="btn" href="#/plans">My plans</a></div></div>'; return; }
-    const names = window.DIALDRoster ? window.DIALDRoster.planNames() : {};
-    A = { planId: data.id, planNumber: data.plan_number, title: data.title || '', localName: names[data.id] || '', inputs: data.inputs, ran: true, stage: 0, selected: data.pathway_ids || [], selectedTouched: true, progress: data.progress || [], dirty: false };
+    const nm = window.DIALDRoster ? window.DIALDRoster.planNameFor(data.id) : '';
+    A = { planId: data.id, planNumber: data.plan_number, title: data.title || '', localName: nm, inputs: data.inputs, ran: true, stage: 0, selected: data.pathway_ids || [], selectedTouched: true, progress: data.progress || [], dirty: false };
     persistA(); renderAnalyze();
   }
 
@@ -1122,28 +1128,51 @@
     let { data, error } = await sb.from('plans').select('id, plan_number, title, created_at, updated_at, result, pathway_ids, progress').order('plan_number', { ascending: false });
     if (error && /title/.test(error.message || '')) ({ data, error } = await sb.from('plans').select('id, plan_number, created_at, updated_at, result, pathway_ids, progress').order('plan_number', { ascending: false }));
     const rows = data || [];
-    const localNames = window.DIALDRoster ? window.DIALDRoster.planNames() : {};
-    main.innerHTML = `<div class="page">
-      <div class="row" style="justify-content:space-between"><div><div class="eyebrow">Your workspace</div><h1>My plans</h1></div><a class="btn primary" href="#/analyze">+ New analysis</a></div>
-      ${error ? `<div class="card"><p class="err">Could not load plans: ${esc(error.message)}</p></div>` : ''}
-      <div class="card">${rows.length ? `<table class="tbl"><thead><tr><th>Plan</th><th>Quadrant</th><th>Signal</th><th>Pathways</th><th>Response</th><th>Updated</th><th></th></tr></thead><tbody>
-        ${rows.map(r => { const resp = (r.progress || []).map(e => E.classifyResponse(e).level); return `<tr>
-          <td class="plan-name"><a href="#/plan/${r.id}"><b>${esc(planTitle(r))}</b></a>${localNames[r.id] ? `<span class="local-name">${esc(localNames[r.id])}</span>` : ''} <button class="icon-btn" data-ren="${r.id}" data-t="${esc(r.title || '')}" data-n="${r.plan_number}" title="Rename" aria-label="Rename ${esc(planTitle(r))}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></svg></button></td>
-          <td>${r.result && r.result.quadrant ? esc(r.result.quadrant) : '—'}</td>
+    const R = window.DIALDRoster, G = window.DIALDGroups;
+    const nameOf = id => (R ? R.planNameFor(id) : '');
+    const named = rows.some(r => nameOf(r.id));
+    const gq = G ? await G.list(sb) : { data: [], error: null };
+    const groups = gq.error ? [] : (gq.data || []);
+    const gErr = gq.error ? (G.isSetupError(gq.error) ? G.SETUP : 'Could not load group plans: ' + gq.error.message) : '';
+    const QC = { Q1: '#2A9488', Q2: '#1B3A5C', Q3: '#E3A93B', Q4: '#5FB3A8' };
+    const table = list => `<table class="tbl"><thead><tr><th>Student plan</th><th>Signal</th><th>Pathways</th><th>Response</th><th>Updated</th><th></th></tr></thead><tbody>
+        ${list.map(r => { const resp = (r.progress || []).map(e => E.classifyResponse(e).level); return `<tr>
+          <td class="plan-name"><a href="#/plan/${r.id}"><b>${esc(planTitle(r))}</b></a>${nameOf(r.id) ? `<span class="local-name">${esc(nameOf(r.id))}</span>` : ''} <button class="icon-btn" data-ren="${r.id}" data-t="${esc(r.title || '')}" data-n="${r.plan_number}" title="Rename" aria-label="Rename ${esc(planTitle(r))}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></svg></button></td>
           <td>${r.result ? `<span class="badge ${esc(r.result.risk)}" style="font-size:12px;padding:3px 8px">${esc(E.SIGNALS[r.result.risk] || r.result.risk)}</span>` : '—'}</td>
           <td>${(r.pathway_ids || []).map(id => pw(id) ? esc(pw(id).title) : '').filter(Boolean).join('<br>') || '—'}</td>
           <td>${resp.length ? resp.map(x => `<span class="badge ${x}" style="font-size:12px;padding:3px 8px">${x}</span>`).join(' ') : '—'}</td>
           <td class="small">${new Date(r.updated_at).toLocaleDateString()}</td>
-          <td><button class="btn ghost danger" data-del="${r.id}" data-n="${r.plan_number}">Delete</button></td></tr>`; }).join('')}</tbody></table>`
-        : '<p>No saved plans yet. Analyze a learner or a class in <a href="#/analyze">Learner Trajectory</a>, and choose “Save as a plan”.</p>'}</div>
-      <p class="small">Plans store levels, results, and the pathways you chose. Never student names or IDs. ${Object.keys(localNames).length ? '🔒 Names next to a plan are kept only on this computer. <a href="#" id="keysheet">Download your key sheet</a> to keep a copy. ' : ''}Account options are in <a href="#/profile">Profile &amp; settings</a>.</p>
+          <td><button class="btn ghost danger" data-del="${r.id}" data-n="${r.plan_number}">Delete</button></td></tr>`; }).join('')}</tbody></table>`;
+    const sections = ['Q1', 'Q2', 'Q3', 'Q4', ''].map(q => {
+      const gs = groups.filter(g => g.quadrant === q), ps = rows.filter(r => ((r.result && r.result.quadrant) || '') === q);
+      if (!gs.length && !ps.length) return '';
+      const students = gs.reduce((n, g) => n + (g.members || []).length, 0);
+      return `<section class="q-sec" style="--c:${QC[q] || '#9fb0c0'}">
+        <h2>${q ? `<span class="qchip" style="--c:${QC[q]}">${q}</span> ${esc(E.QUADRANTS[q].name)}` : 'No profile yet'}
+          <small>${gs.length ? gs.length + ' group plan' + (gs.length > 1 ? 's' : '') + ' (' + students + ' students)' : ''}${gs.length && ps.length ? ' · ' : ''}${ps.length ? ps.length + ' student plan' + (ps.length > 1 ? 's' : '') : ''}</small></h2>
+        ${gs.length ? `<div class="gcards">${gs.map(g => G.cardHTML(g, esc)).join('')}</div>` : ''}
+        ${ps.length ? `<div class="card tbl-wrap">${table(ps)}</div>` : ''}
+      </section>`;
+    }).join('');
+    const keys = R && (R.hasKeys() || named);
+    main.innerHTML = `<div class="page">
+      <div class="row" style="justify-content:space-between"><div><div class="eyebrow">Your workspace</div><h1>My plans</h1></div>
+        <div class="row" style="gap:8px"><a class="btn" href="#/class">+ Group plan (from My class)</a><a class="btn primary" href="#/analyze">+ New analysis</a></div></div>
+      ${error ? `<div class="card"><p class="err">Could not load plans: ${esc(error.message)}</p></div>` : ''}
+      ${gErr ? `<div class="privacy-note" style="margin:8px 0"><span>ℹ️</span><div class="small">${esc(gErr)}</div></div>` : ''}
+      ${sections || `<div class="card"><p>No saved plans yet.</p><ul class="small"><li><b>Group plan:</b> open <a href="#/class">My class</a>, then choose “+ Plan” next to a profile (Q1–Q4).</li><li><b>Student plan:</b> analyze a learner in <a href="#/analyze">Learner Trajectory</a> and choose “Save as a plan”.</li></ul></div>`}
+      <div class="key-strip small"><span>🔒 Plans store codes, levels, scores, and the pathways you chose. Never student names or IDs. ${keys ? 'Names you see here are kept only on this computer.' : ''}</span>
+        <span class="row" style="gap:8px">${keys ? '<button class="btn ghost small-btn" id="keysheet" type="button">⬇ Key sheet</button>' : ''}<label class="btn ghost small-btn">Load key sheet<input type="file" id="keyload" accept=".csv,.xlsx,.xls" hidden></label>${keys ? '<button class="btn ghost small-btn danger" id="keyforget" type="button">Forget names on this computer</button>' : ''}</span></div>
+      <p class="small">Account options are in <a href="#/profile">Profile &amp; settings</a>.</p>
     </div>`;
+    const kl = $('#keyload'); if (kl) kl.onchange = async () => { try { const n = await R.loadKeySheet(kl.files[0]); toast(n ? 'Key sheet loaded: ' + n + ' codes.' : 'No codes found in this file.'); plansPage(); } catch (e) { toast(e.message || 'Could not read the key sheet.'); } };
+    const kf = $('#keyforget'); if (kf) kf.onclick = () => { if (kf.dataset.armed !== '1') { kf.dataset.armed = '1'; kf.textContent = 'Download the key sheet first. Click again to forget'; return; } R.forgetKeys(); Object.keys(R.planNames()).forEach(k => R.forgetPlanName(k)); toast('Names removed from this computer.'); plansPage(); };
     $$('[data-del]').forEach(b => b.onclick = async () => {
       if (b.dataset.armed !== '1') { b.dataset.armed = '1'; b.textContent = 'Click again to delete'; return; }
       const { error: e } = await sb.from('plans').delete().eq('id', b.dataset.del);
       if (e) toast('Could not delete: ' + e.message); else { if (window.DIALDRoster) window.DIALDRoster.forgetPlanName(b.dataset.del); toast('Plan ' + b.dataset.n + ' deleted.'); if (A.planId === b.dataset.del) { A = freshA(); persistA(); } plansPage(); }
     });
-    const ks = $('#keysheet'); if (ks) ks.onclick = e => { e.preventDefault(); window.DIALDRoster.keySheetCSV(); };
+    const ks = $('#keysheet'); if (ks) ks.onclick = e => { e.preventDefault(); if (!window.DIALDRoster.keySheetCSV()) toast('Nothing to download yet.'); };
     $$('[data-ren]').forEach(b => b.onclick = () => {
       const cell = b.closest('td'), old = b.dataset.t;
       cell.innerHTML = `<form class="ren"><input maxlength="60" value="${esc(old)}" placeholder="Plan ${b.dataset.n}" aria-label="Plan name"><button class="btn primary" type="submit">Save</button><button class="btn ghost" type="button">Cancel</button><small class="err"></small></form>`;
@@ -1443,7 +1472,7 @@
           setTimeout(async () => {
             await loadProfile(); renderAcct();
             const p = parseHash().parts[0] || '';
-            if (!user || ['plans', 'plan', 'analyze', 'learner', 'class', 'pathway', 'login', 'profile'].includes(p) || (profileLoaded && !profile)) route();
+            if (!user || ['plans', 'plan', 'group', 'analyze', 'learner', 'class', 'pathway', 'login', 'profile'].includes(p) || (profileLoaded && !profile)) route();
           }, 0);
         }
       });
