@@ -200,7 +200,7 @@
       </ol>
       <p>DIALD is a research prototype. Its rules are provisional and are being validated. Results are for educator review, not diagnoses.</p>`],
     ['file', 'Load a class file', `
-      <p>Export your language test results from your data system (for example, LAS Links, ACCESS, ELPAC, or NYSESLAT) as Excel or CSV. The template has one row per student and a block of columns for each school year (the year is in the column name, as in Ellevation or DRC longitudinal exports). Files with one row per student per year also work.</p>
+      <p>Export your language test results from your data system (for example, LAS Links, ACCESS, ELPAC, or NYSESLAT) as Excel or CSV. The template has one row per student and a block of columns for each school year (the year is in the column name). Files with one row per student per year also work, and so do files that keep a whole test history in one cell, with a date next to each result. DIALD finds the columns by their names, so the order does not matter.</p>
       <ul>
         <li><b>New:</b> the templates have <b>IEP</b> and <b>504</b> columns (Yes/No). They stay on your computer and add a note on the student’s page.</li>
         <li><b>Required:</b> a name or ID column, and the four domain levels (Listening, Speaking, Reading, Writing) for each year.</li>

@@ -189,7 +189,7 @@
     return widen(unstack({ fileName: file.name, headers, body }));
   }
 
-  // Some systems (for example Ellevation) put a learner's whole test history in one cell:
+  // Some data systems put a learner's whole test history in one cell:
   // "3 - Intermediate (1/5/2026) | 2 - Early Intermediate (1/2/2025)". Split each cell by date
   // and build one row per school year, so the rest of DIALD reads it like any other file.
   // A part looks like "3 - Intermediate (1/5/2026)"; dates may also be 2026-01-05 or "Jan 5, 2026".
@@ -781,7 +781,7 @@
               <a class="tpl-card" href="DIALD-template-complete.xlsx" download><b>Complete</b><span>Adds scale scores, overall and literacy levels, state ELA test, and benchmark for the full analysis.</span></a>
             </div>
             <span class="small">Fill only the columns you have: empty columns are fine. <button class="linkish" id="tpl" type="button">CSV version</button></span></li>
-          <li><b>Add your students.</b> One row per student, with a block of columns for each school year (the year goes in the column name, as in Ellevation or DRC exports). Extra columns (scale scores, overall level, state ELA test, benchmark) make the analysis stronger.</li>
+          <li><b>Add your students.</b> One row per student, with a block of columns for each school year (the year goes in the column name), one row per student and year, or a whole test history in one cell. DIALD recognizes all three. Extra columns (scale scores, overall level, state ELA test, benchmark) make the analysis stronger.</li>
           <li><b>Upload the file below</b> and check that DIALD matched each column.</li>
         </ol>
         <div class="dash-grid">
@@ -849,10 +849,10 @@
     const noId = map.name == null && map.first == null && map.last == null && map.id == null;
     const show = FIELDS.filter(f => f.k !== 'name' || map.first == null);
     main.innerHTML = `<div class="dash"><div class="dash-head"><div class="dash-in"><div><div class="eyebrow">Analyze my file · step 2 of 2</div><h1>Check the columns</h1>
-      <p class="small"><span class="local-chip">🔒 On this computer only</span> ${esc(raw.fileName)} · ${raw.body.length} rows <span class="small" style="opacity:.6">· reader v30</span></p></div></div></div>
+      <p class="small"><span class="local-chip">🔒 On this computer only</span> ${esc(raw.fileName)} · ${raw.body.length} rows <span class="small" style="opacity:.6">· reader v31</span></p></div></div></div>
       <div class="dash-in"><div class="card">
         ${raw.widened ? `<p class="small"><b>Note:</b> your file has ${raw.widened} years in separate columns. DIALD turned them into one row per year.</p>` : ''}
-        ${raw.unstacked ? `<p class="small"><b>Note:</b> your file keeps each learner's test history in one cell (as Ellevation does). DIALD split it by test date into one row per school year (a January 2026 test counts as 2025-26). If the file had no years-in-services column, DIALD counted the years of test history.</p>` : ''}
+        ${raw.unstacked ? `<p class="small"><b>How DIALD read your file:</b> each cell has several test results with their dates, for example <i>“3 - Intermediate (1/5/2026) | 2 - Early Intermediate (1/2/2025)”</i>. DIALD separated them by date and made one row per school year (a test from July to June counts in that school year, so January 2026 is 2025-26). Columns are matched by their names (for example “Reading Level” or “Grade”). If the file had no years-in-services column, DIALD counted the years of test history. Check the matches below.</p>` : ''}
         <div class="notice-ok small need-key"><b>Saved a class plan before?</b> Load the key sheet you downloaded, so your students keep the same codes and your plans find them. ${hasKeys() ? '<span class="chip good">Key sheet loaded ✓</span>' : ''} <label class="btn ghost small-btn">Load key sheet<input type="file" id="m-key" accept=".csv,.xlsx,.xls" hidden></label></div>
         <p>${ui.pending.remembered ? 'DIALD remembered how this kind of file is organized.' : 'DIALD matched these columns by their names.'} Fix anything that is wrong, then choose <b>Analyze</b>. Fields marked 🔒 are used only on this computer.</p>
         <div class="tbl-wrap"><table class="tbl map-tbl"><thead><tr><th>DIALD needs</th><th>Column in your file</th><th>Example</th></tr></thead><tbody>
